@@ -41,3 +41,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# hub-preop — local artefacts (never push)
+/tmp/
+/backups/
+
+# local tooling / IDE (optional; remove if you want shared editor config in repo)
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db

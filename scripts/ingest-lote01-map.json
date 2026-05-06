@@ -1,0 +1,31 @@
+{
+  "actorLabel": "pilot-c2",
+  "revisionNote": "C2 founding lote 01 full-content ingestion",
+  "entries": [
+    {
+      "canonicalTitle": "The Framework",
+      "sourceFile": "AlblumZ deeds/IDR/02_Documentos/REFERÊNCIAS/The Framework.md",
+      "idrRef": "idr:HUB-INSTR-00009001",
+      "layer": 1,
+      "initialStatus": "in-force",
+      "draftingAuthority": "regional-placeholder"
+    },
+    {
+      "canonicalTitle": "Document Hub (Tech Specs)",
+      "sourceFile": "AlblumZ deeds/IDR/02_Documentos/REFERÊNCIAS/Document Hub (Tech Specs).md",
+      "idrRef": "idr:HUB-INSTR-00009002",
+      "layer": 2,
+      "initialStatus": "under-review",
+      "draftingAuthority": "regional-placeholder",
+      "parentIdrRef": "idr:HUB-INSTR-00009001"
+    },
+    {
+      "canonicalTitle": "Ato Fundador 0",
+      "sourceFile": "AlblumZ deeds/IDR/02_Documentos/Ato Fundador 0.md",
+      "idrRef": "idr:HUB-INSTR-00009003",
+      "layer": 1,
+      "initialStatus": "in-force",
+      "draftingAuthority": "regional-placeholder"
+    }
+  ]
+}

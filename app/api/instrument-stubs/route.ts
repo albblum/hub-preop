@@ -1,38 +1,28 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { createInstrumentStubSchema } from "@/lib/validation/instrument-stub";
 
+const DEPRECATED = {
+  message:
+    "instrument-stubs API was removed in Phase 3 (Core Registry). Use POST/GET /api/instruments instead.",
+  migration:
+    "See AlblumZ deeds/IDR/02_Documentos/HUB_PREOP/Fase3_Core_Registry_MVP.md — Breaking change: InstrumentStub replaced by Instrument + InstrumentVersion + TransitionEvent.",
+};
+
+/** @deprecated Phase 3 — use `/api/instruments` */
 export async function GET() {
-  const items = await prisma.instrumentStub.findMany({
-    orderBy: { createdAt: "desc" },
-  });
-  return NextResponse.json(items);
-}
-
-export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const parsed = createInstrumentStubSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Validation failed", issues: parsed.error.flatten() },
-      { status: 400 },
-    );
-  }
-
-  const { title, layer, status, content } = parsed.data;
-  const created = await prisma.instrumentStub.create({
-    data: {
-      title,
-      layer,
-      status,
-      content: content ?? null,
+  return NextResponse.json(DEPRECATED, {
+    status: 410,
+    headers: {
+      Deprecation: "true",
     },
   });
-  return NextResponse.json(created, { status: 201 });
+}
+
+/** @deprecated Phase 3 — use `POST /api/instruments` */
+export async function POST() {
+  return NextResponse.json(DEPRECATED, {
+    status: 410,
+    headers: {
+      "Deprecation": "true",
+    },
+  });
 }

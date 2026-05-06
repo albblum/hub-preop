@@ -1,0 +1,9 @@
+/** Ledger entry types — conceptual mirror of DocHUB §5.5 (subset, instrument-level pre-op). */
+export const LEDGER_ENTRY_TYPES = {
+  /** New or revised content snapshot; `payloadHash` = `InstrumentVersion.contentHash`. */
+  VERSION_RECORDED: "VERSION_RECORDED",
+  /** Status change; `payloadHash` = canonical hash of the transition event record. */
+  STATUS_TRANSITION: "STATUS_TRANSITION",
+} as const;
+
+export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[keyof typeof LEDGER_ENTRY_TYPES];

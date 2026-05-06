@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 
-type RouteContext = { params: Promise<{ id: string }> };
+const DEPRECATED = {
+  message:
+    "instrument-stubs API was removed in Phase 3 (Core Registry). Use GET /api/instruments/[id] or GET /api/instruments?idrRef=...",
+  migration:
+    "See Fase3_Core_Registry_MVP.md — Core Registry uses idr:ref and cuid `id`.",
+};
 
-export async function GET(_request: Request, context: RouteContext) {
-  const { id } = await context.params;
-  const item = await prisma.instrumentStub.findUnique({ where: { id } });
-  if (!item) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-  return NextResponse.json(item);
+/** @deprecated Phase 3 — use `/api/instruments/:id` */
+export async function GET() {
+  return NextResponse.json(DEPRECATED, { status: 410 });
 }

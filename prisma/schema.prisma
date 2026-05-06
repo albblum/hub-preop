@@ -7,13 +7,183 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Minimal persistence stub for Hub pre-op Phase 2 (not the full Core Registry).
-model InstrumentStub {
-  id        String   @id @default(cuid())
-  title     String
-  layer     Int
-  status    String
-  content   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+/// Single-row counter for institutional idr:ref allocation (Phase 3 Core Registry).
+model IdrSequence {
+  key String @id @default("instrument")
+  next Int   @default(0)
+}
+
+/// Logical instrument head: stable idr:ref, layer, lifecycle status, derivation link.
+model Instrument {
+  id                   String   @id @default(cuid())
+  idrRef               String   @unique
+  title                String
+  layer                Int
+  status               String
+  draftingAuthority    String?
+  currentVersion       Int
+  parentInstrumentId   String?
+  parent               Instrument?  @relation("Derivation", fields: [parentInstrumentId], references: [id])
+  children             Instrument[] @relation("Derivation")
+  currentVersionRecordId String?  @unique
+  currentVersionRecord   InstrumentVersion? @relation("CurrentVersionPointer", fields: [currentVersionRecordId], references: [id])
+  versions             InstrumentVersion[] @relation("VersionHistory")
+  events               TransitionEvent[]
+  ledgerEntries        LedgerEntry[]
+  parts                Part[]
+  compositionEntries   CompositionEntry[]
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([layer])
+  @@index([status])
+}
+
+/// Versioned content snapshot. Markdown string — human-readable, diff-friendly, matches Hub doc-oriented model.
+model InstrumentVersion {
+  id                    String   @id @default(cuid())
+  instrumentId          String
+  instrument            Instrument @relation("VersionHistory", fields: [instrumentId], references: [id], onDelete: Cascade)
+  version               Int
+  content               String   @db.Text
+  /// SHA-256 (hex) of canonical payload: `${version}\n${content}` (UTF-8).
+  contentHash           String
+  /// contentHash of the immediately prior version in the same instrument chain (null for v1).
+  previousContentHash   String?
+  supersedesVersion     Int?
+  revisionNote          String?
+  createdAt             DateTime @default(now())
+  currentHeadFor        Instrument? @relation("CurrentVersionPointer")
+  ledgerEntry           LedgerEntry?
+  partVersion           PartVersion?
+
+  @@unique([instrumentId, version])
+  @@index([instrumentId])
+}
+
+/// Logical Part (DocHUB Part Store). MVP monolith: exactly one row per Instrument (`partKind` = MONOLITH_BODY).
+model Part {
+  id           String   @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  /// Hub-internal kind; MVP uses `MONOLITH_BODY` (see ADR 0003).
+  partKind     String   @default("MONOLITH_BODY")
+  /// DocHUB-shaped Part lifecycle projection from `Instrument.status` (ADR 0004).
+  partStatus   String   @default("DRAFT")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  versions           PartVersion[]
+  compositionEntries CompositionEntry[]
+
+  @@unique([instrumentId, partKind])
+  @@index([instrumentId])
+}
+
+/// Version of a Part aligned to an InstrumentVersion — text remains canonical on `InstrumentVersion`; hash mirrors integrity.
+model PartVersion {
+  id                  String   @id @default(cuid())
+  partId              String
+  part                Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  instrumentVersionId String   @unique
+  instrumentVersion   InstrumentVersion @relation(fields: [instrumentVersionId], references: [id], onDelete: Cascade)
+  /// Same payload hash as `InstrumentVersion.contentHash` for this version (no duplicate body column).
+  contentHash         String
+  /// Placeholder for multi-part ordering within the instrument version (always 1 in MVP).
+  ordinal             Int      @default(1)
+  createdAt           DateTime @default(now())
+
+  @@index([partId])
+}
+
+/// Ordered Parts in the active composition for an Instrument (DocHUB Composition Registry). MVP: single `position` = 1.
+model CompositionEntry {
+  id           String   @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  partId       String
+  part         Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  position     Int
+
+  @@unique([instrumentId, position])
+  @@unique([instrumentId, partId])
+  @@index([instrumentId])
+}
+
+/// Append-only status change log at logical instrument level.
+model TransitionEvent {
+  id              String     @id @default(cuid())
+  instrumentId  String
+  instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  fromStatus      String
+  toStatus        String
+  at              DateTime   @default(now())
+  /// Legacy free-text actor; prefer actorLabel when present.
+  actor           String?
+  actorKind       ActorKind  @default(system)
+  actorLabel      String?
+  actorExternalId String?
+  note            String?
+  ledgerEntry     LedgerEntry?
+
+  @@index([instrumentId, at])
+}
+
+/// Append-only conceptual ledger (Passo B — DocHUB alignment): one chain per instrument.
+model LedgerEntry {
+  id                    String   @id @default(cuid())
+  instrumentId          String
+  instrument            Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  sequence              Int
+  previousEntryId       String?
+  previousEntry         LedgerEntry?  @relation("LedgerChain", fields: [previousEntryId], references: [id], onDelete: SetNull)
+  nextInChain           LedgerEntry[] @relation("LedgerChain")
+  entryType             String
+  payloadHash           String
+  idrRef                String
+  instrumentVersionId   String?  @unique
+  instrumentVersion     InstrumentVersion? @relation(fields: [instrumentVersionId], references: [id], onDelete: SetNull)
+  transitionEventId     String?  @unique
+  transitionEvent       TransitionEvent? @relation(fields: [transitionEventId], references: [id], onDelete: SetNull)
+  createdAt             DateTime @default(now())
+
+  @@unique([instrumentId, sequence])
+  @@index([instrumentId, sequence])
+  @@index([instrumentId, createdAt])
+}
+
+/// Phase 4: registered audit export with manifest self-hash.
+model ExportManifest {
+  id                  String   @id @default(cuid())
+  createdAt           DateTime @default(now())
+  scopeDescription    String
+  requestedBy         String?
+  /// SHA-256 (hex) of stable JSON manifest body (see Fase4 spec).
+  contentHash         String
+  exportSchemaVersion String   @default("1")
+}
+
+enum ActorKind {
+  human
+  system
+  api_key
+}
+
+/// Operational roles (Fase 5). Users may hold multiple roles; highest export tier wins.
+enum HubRole {
+  admin
+  registrar
+  reviewer
+  viewer_public
+  viewer_registered
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  name         String?
+  roles        HubRole[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }

@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { createInstrumentStubSchema } from "@/lib/validation/instrument-stub";
+import { createInstrumentBodySchema } from "@/lib/validation/instrument";
 
 describe("validation", () => {
-  it("accepts a minimal instrument stub payload", () => {
-    const result = createInstrumentStubSchema.safeParse({
+  it("accepts a minimal create instrument payload", () => {
+    const result = createInstrumentBodySchema.safeParse({
       title: "Smoke",
       layer: 2,
-      status: "draft",
     });
     expect(result.success).toBe(true);
   });

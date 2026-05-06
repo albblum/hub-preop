@@ -21,6 +21,8 @@
     "test:g1:markdown-flow": "bash scripts/test-g1-markdown-flow.sh",
     "start:browser-ui": "bash scripts/start-browser-ui.sh",
     "push:github": "bash scripts/push-to-github.sh",
+    "db:backup": "bash scripts/backup-db.sh",
+    "db:restore": "bash scripts/restore-db.sh",
     "postinstall": "prisma generate"
   },
   "dependencies": {

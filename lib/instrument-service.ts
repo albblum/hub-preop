@@ -8,7 +8,15 @@ import { isCanonicalStatus } from "@/lib/domain/canonical-status";
 import { computeContentHash, verifyContentHash } from "@/lib/integrity/content-hash";
 import { pickVersionAt, resolveStatusAt } from "@/lib/integrity/as-of";
 import { appendTransitionLedger, appendVersionLedger } from "@/lib/ledger/append-ledger";
-import { PART_KIND_MONOLITH_BODY, syncMonolithicPartForInstrumentVersion } from "@/lib/part-composition";
+import {
+  PART_KIND_ANNEX,
+  PART_KIND_SECTION,
+  assembleInstrumentMarkdown,
+  isMonolithCompositionProfile,
+  syncMonolithicPartForInstrumentVersion,
+  syncMultipartPartVersionsForInstrumentVersion,
+  validateMultipartSegmentPositions,
+} from "@/lib/part-composition";
 import { mapInstrumentStatusToPartStatus } from "@/lib/domain/part-status";
 
 const INITIAL_STATUS = "draft";
@@ -118,6 +126,209 @@ export async function createInstrument(input: CreateInstrumentInput): Promise<In
   });
 }
 
+export type MultipartSegmentInput = {
+  partKind: typeof PART_KIND_SECTION | typeof PART_KIND_ANNEX;
+  position: number;
+  markdownBody: string;
+};
+
+export type CreateMultipartInstrumentInput = {
+  title: string;
+  layer: number;
+  draftingAuthority?: string | null;
+  parentInstrumentId?: string | null;
+  segments: MultipartSegmentInput[];
+};
+
+/** ADR 0008 — new instrument with SECTION/ANNEX composition only (no MONOLITH_BODY). */
+export async function createMultipartInstrument(
+  input: CreateMultipartInstrumentInput,
+): Promise<Instrument> {
+  const { title, layer, draftingAuthority, parentInstrumentId, segments } = input;
+
+  let parent: Instrument | null = null;
+  if (parentInstrumentId) {
+    parent = await prisma.instrument.findUnique({
+      where: { id: parentInstrumentId },
+    });
+    if (!parent) {
+      throw new DomainError(`Parent instrument not found: ${parentInstrumentId}`);
+    }
+  }
+
+  if (!isParentDerivationValid(layer, parent)) {
+    throw new DomainError(
+      "Invalid derivation: layer 0 must have no parent; layer > 0 requires parent.layer < child.layer.",
+    );
+  }
+
+  const posCheck = validateMultipartSegmentPositions(segments);
+  if (!posCheck.ok) {
+    throw new DomainError(posCheck.message);
+  }
+
+  const kinds = segments.map((s) => s.partKind);
+  if (new Set(kinds).size !== kinds.length) {
+    throw new DomainError("Duplicate partKind in segments");
+  }
+
+  for (const s of segments) {
+    if (s.partKind !== PART_KIND_SECTION && s.partKind !== PART_KIND_ANNEX) {
+      throw new DomainError(`Invalid partKind for multi-part create: ${s.partKind}`);
+    }
+  }
+
+  const idrRef = await allocateIdrRef();
+  const ordered = [...segments].sort((a, b) => a.position - b.position);
+  const aggregated = assembleInstrumentMarkdown(ordered.map((s) => s.markdownBody));
+  const v1hash = computeContentHash(1, aggregated);
+
+  return prisma.$transaction(async (tx) => {
+    const inst = await tx.instrument.create({
+      data: {
+        idrRef,
+        title,
+        layer,
+        status: INITIAL_STATUS,
+        draftingAuthority: draftingAuthority ?? null,
+        currentVersion: 1,
+        parentInstrumentId: parent?.id ?? null,
+      },
+    });
+
+    const v1 = await tx.instrumentVersion.create({
+      data: {
+        instrumentId: inst.id,
+        version: 1,
+        content: aggregated,
+        contentHash: v1hash,
+        previousContentHash: null,
+        supersedesVersion: null,
+        revisionNote: null,
+      },
+    });
+
+    if (!verifyContentHash(v1)) {
+      throw new IntegrityViolationError("Version 1 contentHash verification failed after insert");
+    }
+
+    const partStatus = mapInstrumentStatusToPartStatus(INITIAL_STATUS);
+    for (const seg of ordered) {
+      const part = await tx.part.create({
+        data: {
+          instrumentId: inst.id,
+          partKind: seg.partKind,
+          partStatus,
+        },
+      });
+      await tx.compositionEntry.create({
+        data: {
+          instrumentId: inst.id,
+          partId: part.id,
+          position: seg.position,
+        },
+      });
+      await tx.partVersion.create({
+        data: {
+          partId: part.id,
+          instrumentVersionId: v1.id,
+          contentHash: v1.contentHash,
+          ordinal: seg.position,
+          markdownBody: seg.markdownBody,
+        },
+      });
+    }
+
+    const updated = await tx.instrument.update({
+      where: { id: inst.id },
+      data: { currentVersionRecordId: v1.id },
+    });
+
+    await appendVersionLedger(tx, {
+      instrument: { id: inst.id, idrRef: inst.idrRef },
+      version: { id: v1.id, contentHash: v1.contentHash },
+    });
+
+    return updated;
+  });
+}
+
+async function getPartsOrderedByComposition(
+  instrumentId: string,
+): Promise<{ id: string; partKind: string; partStatus: string }[]> {
+  const entries = await prisma.compositionEntry.findMany({
+    where: { instrumentId },
+    orderBy: { position: "asc" },
+    include: { part: { select: { id: true, partKind: true, partStatus: true } } },
+  });
+  return entries.map((e) => ({
+    id: e.part.id,
+    partKind: e.part.partKind,
+    partStatus: e.part.partStatus,
+  }));
+}
+
+/** Per-part markdown for the instrument head revision (multi-part profile only; ADR 0008). */
+async function getMultipartSegmentsForCurrentVersion(
+  instrumentId: string,
+  instrumentVersionId: string,
+): Promise<
+  Array<{ position: number; partId: string; partKind: string; markdownBody: string }>
+> {
+  const entries = await prisma.compositionEntry.findMany({
+    where: { instrumentId },
+    orderBy: { position: "asc" },
+    include: { part: { select: { partKind: true } } },
+  });
+  const partIds = entries.map((e) => e.partId);
+  const pvs = await prisma.partVersion.findMany({
+    where: {
+      instrumentVersionId,
+      partId: { in: partIds },
+    },
+  });
+  const mdByPart = new Map(pvs.map((pv) => [pv.partId, pv.markdownBody ?? ""]));
+  return entries.map((e) => ({
+    position: e.position,
+    partId: e.partId,
+    partKind: e.part.partKind,
+    markdownBody: mdByPart.get(e.partId) ?? "",
+  }));
+}
+
+async function attachCompositionDetailFields(row: {
+  id: string;
+  currentVersionRecord: InstrumentVersion | null;
+}): Promise<{
+  parts: { id: string; partKind: string; partStatus: string }[];
+  compositionProfile: "monolith" | "multipart";
+  multipartSegments?: Array<{
+    position: number;
+    partId: string;
+    partKind: string;
+    markdownBody: string;
+  }>;
+}> {
+  const parts = await getPartsOrderedByComposition(row.id);
+  const isMono = await isMonolithCompositionProfile(prisma, row.id);
+  const compositionProfile = isMono ? "monolith" : "multipart";
+  let multipartSegments:
+    | Array<{
+        position: number;
+        partId: string;
+        partKind: string;
+        markdownBody: string;
+      }>
+    | undefined;
+  if (!isMono && row.currentVersionRecord) {
+    multipartSegments = await getMultipartSegmentsForCurrentVersion(
+      row.id,
+      row.currentVersionRecord.id,
+    );
+  }
+  return { parts, compositionProfile, multipartSegments };
+}
+
 export type InstrumentDetail = Instrument & {
   currentVersionRecord: InstrumentVersion | null;
   parent: Pick<Instrument, "id" | "idrRef" | "layer" | "title" | "status"> | null;
@@ -132,8 +343,17 @@ export type InstrumentDetail = Instrument & {
     | "createdAt"
   >[];
   events: TransitionEvent[];
-  /** MONOLITH_BODY Part(s); MVP expects at most one row (ADR 0004). */
+  /** Parts in composition order (monolith or multi-part; ADR 0008). */
   parts: { id: string; partKind: string; partStatus: string }[];
+  /** Discriminator for append API: monolith uses POST …/content; multipart uses POST …/versions/multipart. */
+  compositionProfile: "monolith" | "multipart";
+  /** Set when `compositionProfile === "multipart"` — ordered segments for the current head version. */
+  multipartSegments?: Array<{
+    position: number;
+    partId: string;
+    partKind: string;
+    markdownBody: string;
+  }>;
 };
 
 export async function getInstrumentById(id: string): Promise<InstrumentDetail | null> {
@@ -157,14 +377,11 @@ export async function getInstrumentById(id: string): Promise<InstrumentDetail | 
         orderBy: { version: "asc" },
       },
       events: { orderBy: { at: "asc" } },
-      parts: {
-        where: { partKind: PART_KIND_MONOLITH_BODY },
-        select: { id: true, partKind: true, partStatus: true },
-        take: 1,
-      },
     },
   });
-  return row;
+  if (!row) return null;
+  const extra = await attachCompositionDetailFields(row);
+  return { ...row, ...extra };
 }
 
 export async function getInstrumentByIdrRef(idrRef: string): Promise<InstrumentDetail | null> {
@@ -188,14 +405,11 @@ export async function getInstrumentByIdrRef(idrRef: string): Promise<InstrumentD
         orderBy: { version: "asc" },
       },
       events: { orderBy: { at: "asc" } },
-      parts: {
-        where: { partKind: PART_KIND_MONOLITH_BODY },
-        select: { id: true, partKind: true, partStatus: true },
-        take: 1,
-      },
     },
   });
-  return row;
+  if (!row) return null;
+  const extra = await attachCompositionDetailFields(row);
+  return { ...row, ...extra };
 }
 
 export async function listInstruments(options?: {
@@ -361,10 +575,7 @@ export async function transitionInstrument(input: TransitionInput): Promise<Inst
 
     const partStatus = mapInstrumentStatusToPartStatus(toStatus);
     await tx.part.updateMany({
-      where: {
-        instrumentId: current.id,
-        partKind: PART_KIND_MONOLITH_BODY,
-      },
+      where: { instrumentId: current.id },
       data: { partStatus },
     });
   });
@@ -390,6 +601,12 @@ export async function appendInstrumentVersion(
 
   if (!inst?.currentVersionRecord) {
     throw new DomainError("Instrument not found or has no current version");
+  }
+
+  if (!(await isMonolithCompositionProfile(prisma, inst.id))) {
+    throw new DomainError(
+      "Instrument uses multi-part profile; use POST /api/instruments/{id}/versions/multipart",
+    );
   }
 
   const nextVersion = inst.currentVersion + 1;
@@ -439,6 +656,220 @@ export async function appendInstrumentVersion(
 
   const detail = await getInstrumentById(inst.id);
   if (!detail) throw new Error("Instrument disappeared after version append");
+  return detail;
+}
+
+export type AppendMultipartVersionInput = {
+  instrumentId: string;
+  bodiesByPartId: Record<string, string>;
+  revisionNote?: string | null;
+};
+
+export async function appendMultipartInstrumentVersion(
+  input: AppendMultipartVersionInput,
+): Promise<InstrumentDetail> {
+  const inst = await prisma.instrument.findUnique({
+    where: { id: input.instrumentId },
+    include: { currentVersionRecord: true },
+  });
+
+  if (!inst?.currentVersionRecord) {
+    throw new DomainError("Instrument not found or has no current version");
+  }
+
+  if (await isMonolithCompositionProfile(prisma, inst.id)) {
+    throw new DomainError(
+      "Instrument uses monolithic profile; use POST /api/instruments/{id}/content",
+    );
+  }
+
+  const entries = await prisma.compositionEntry.findMany({
+    where: { instrumentId: inst.id },
+    orderBy: { position: "asc" },
+  });
+
+  const partMarkdownByPartId = new Map<string, string>();
+  const orderedBodies: string[] = [];
+  for (const e of entries) {
+    const body = input.bodiesByPartId[e.partId];
+    if (body === undefined) {
+      throw new DomainError(`Missing markdown for part ${e.partId}`);
+    }
+    partMarkdownByPartId.set(e.partId, body);
+    orderedBodies.push(body);
+  }
+
+  const content = assembleInstrumentMarkdown(orderedBodies);
+  const nextVersion = inst.currentVersion + 1;
+  const prevVersion = inst.currentVersion;
+  const prevHash = inst.currentVersionRecord.contentHash;
+  const newHash = computeContentHash(nextVersion, content);
+
+  await prisma.$transaction(async (tx) => {
+    const ver = await tx.instrumentVersion.create({
+      data: {
+        instrumentId: inst.id,
+        version: nextVersion,
+        content,
+        contentHash: newHash,
+        previousContentHash: prevHash,
+        supersedesVersion: prevVersion,
+        revisionNote: input.revisionNote ?? null,
+      },
+    });
+
+    if (!verifyContentHash(ver)) {
+      throw new IntegrityViolationError("New version contentHash verification failed after insert");
+    }
+    if (ver.previousContentHash !== prevHash) {
+      throw new IntegrityViolationError("Version chain link does not match prior contentHash");
+    }
+
+    await syncMultipartPartVersionsForInstrumentVersion(tx, {
+      instrumentId: inst.id,
+      instrumentVersion: ver,
+      instrumentStatus: inst.status,
+      partMarkdownByPartId,
+    });
+
+    await tx.instrument.update({
+      where: { id: inst.id },
+      data: {
+        currentVersion: nextVersion,
+        currentVersionRecordId: ver.id,
+      },
+    });
+
+    await appendVersionLedger(tx, {
+      instrument: { id: inst.id, idrRef: inst.idrRef },
+      version: { id: ver.id, contentHash: ver.contentHash },
+    });
+  });
+
+  const detail = await getInstrumentById(inst.id);
+  if (!detail) throw new Error("Instrument disappeared after multipart version append");
+  return detail;
+}
+
+export async function addInstrumentCompositionPart(input: {
+  instrumentId: string;
+  partKind: typeof PART_KIND_SECTION | typeof PART_KIND_ANNEX;
+  initialMarkdown?: string | null;
+}): Promise<InstrumentDetail> {
+  if (await isMonolithCompositionProfile(prisma, input.instrumentId)) {
+    throw new DomainError(
+      "Cannot add composition parts to a monolithic instrument (ADR 0008)",
+    );
+  }
+
+  const existingKind = await prisma.part.findUnique({
+    where: {
+      instrumentId_partKind: {
+        instrumentId: input.instrumentId,
+        partKind: input.partKind,
+      },
+    },
+  });
+  if (existingKind) {
+    throw new DomainError(`Part kind ${input.partKind} already exists for this instrument`);
+  }
+
+  const inst = await prisma.instrument.findUnique({
+    where: { id: input.instrumentId },
+    include: { currentVersionRecord: true },
+  });
+  if (!inst?.currentVersionRecord) {
+    throw new DomainError("Instrument not found or has no current version");
+  }
+
+  const head = inst.currentVersionRecord;
+  const entries = await prisma.compositionEntry.findMany({
+    where: { instrumentId: inst.id },
+    orderBy: { position: "asc" },
+  });
+  const pvs = await prisma.partVersion.findMany({
+    where: { instrumentVersionId: head.id },
+  });
+  const byPart = new Map<string, string>();
+  for (const pv of pvs) {
+    byPart.set(pv.partId, pv.markdownBody ?? "");
+  }
+
+  const nextPos = entries.length + 1;
+  const initialMd = input.initialMarkdown ?? "";
+
+  await prisma.$transaction(async (tx) => {
+    const part = await tx.part.create({
+      data: {
+        instrumentId: inst.id,
+        partKind: input.partKind,
+        partStatus: mapInstrumentStatusToPartStatus(inst.status),
+      },
+    });
+    await tx.compositionEntry.create({
+      data: {
+        instrumentId: inst.id,
+        partId: part.id,
+        position: nextPos,
+      },
+    });
+    byPart.set(part.id, initialMd);
+
+    const newEntries = await tx.compositionEntry.findMany({
+      where: { instrumentId: inst.id },
+      orderBy: { position: "asc" },
+    });
+    const orderedBodies = newEntries.map((e) => {
+      const b = byPart.get(e.partId);
+      if (b === undefined) {
+        throw new IntegrityViolationError(`Missing assembled body for part ${e.partId}`);
+      }
+      return b;
+    });
+    const assembled = assembleInstrumentMarkdown(orderedBodies);
+    const nextVersion = inst.currentVersion + 1;
+    const prevHash = head.contentHash;
+    const newHash = computeContentHash(nextVersion, assembled);
+
+    const ver = await tx.instrumentVersion.create({
+      data: {
+        instrumentId: inst.id,
+        version: nextVersion,
+        content: assembled,
+        contentHash: newHash,
+        previousContentHash: prevHash,
+        supersedesVersion: inst.currentVersion,
+        revisionNote: `add part ${input.partKind}`,
+      },
+    });
+
+    if (!verifyContentHash(ver)) {
+      throw new IntegrityViolationError("New version contentHash verification failed after insert");
+    }
+
+    await syncMultipartPartVersionsForInstrumentVersion(tx, {
+      instrumentId: inst.id,
+      instrumentVersion: ver,
+      instrumentStatus: inst.status,
+      partMarkdownByPartId: byPart,
+    });
+
+    await tx.instrument.update({
+      where: { id: inst.id },
+      data: {
+        currentVersion: nextVersion,
+        currentVersionRecordId: ver.id,
+      },
+    });
+
+    await appendVersionLedger(tx, {
+      instrument: { id: inst.id, idrRef: inst.idrRef },
+      version: { id: ver.id, contentHash: ver.contentHash },
+    });
+  });
+
+  const detail = await getInstrumentById(inst.id);
+  if (!detail) throw new Error("Instrument disappeared after add part");
   return detail;
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import {
   createInstrument,
+  createMultipartInstrument,
   getInstrumentById,
   getInstrumentByIdrRef,
   listInstruments,
@@ -75,13 +76,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const created = await createInstrument({
-      title: parsed.data.title,
-      layer: parsed.data.layer,
-      draftingAuthority: parsed.data.draftingAuthority,
-      content: parsed.data.content,
-      parentInstrumentId: parsed.data.parentInstrumentId,
-    });
+    const hasSegments = parsed.data.segments != null && parsed.data.segments.length > 0;
+    const created = hasSegments
+      ? await createMultipartInstrument({
+          title: parsed.data.title,
+          layer: parsed.data.layer,
+          draftingAuthority: parsed.data.draftingAuthority,
+          parentInstrumentId: parsed.data.parentInstrumentId,
+          segments: parsed.data.segments!,
+        })
+      : await createInstrument({
+          title: parsed.data.title,
+          layer: parsed.data.layer,
+          draftingAuthority: parsed.data.draftingAuthority,
+          content: parsed.data.content,
+          parentInstrumentId: parsed.data.parentInstrumentId,
+        });
     const full = await getInstrumentById(created.id);
     return NextResponse.json(full ?? created, { status: 201 });
   } catch (e) {

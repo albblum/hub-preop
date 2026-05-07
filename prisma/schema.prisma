@@ -55,7 +55,7 @@ model InstrumentVersion {
   createdAt             DateTime @default(now())
   currentHeadFor        Instrument? @relation("CurrentVersionPointer")
   ledgerEntry           LedgerEntry?
-  partVersion           PartVersion?
+  partVersions          PartVersion[]
 
   @@unique([instrumentId, version])
   @@index([instrumentId])
@@ -80,19 +80,22 @@ model Part {
   @@index([instrumentId])
 }
 
-/// Version of a Part aligned to an InstrumentVersion — text remains canonical on `InstrumentVersion`; hash mirrors integrity.
+/// Version of a Part aligned to an InstrumentVersion — aggregate text canonical on `InstrumentVersion.content`; per-Part markdown in `markdownBody` for SECTION/ANNEX (ADR 0008).
 model PartVersion {
   id                  String   @id @default(cuid())
   partId              String
   part                Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
-  instrumentVersionId String   @unique
+  instrumentVersionId String
   instrumentVersion   InstrumentVersion @relation(fields: [instrumentVersionId], references: [id], onDelete: Cascade)
-  /// Same payload hash as `InstrumentVersion.contentHash` for this version (no duplicate body column).
+  /// Same payload hash as `InstrumentVersion.contentHash` for this instrument revision (aggregate).
   contentHash         String
-  /// Placeholder for multi-part ordering within the instrument version (always 1 in MVP).
+  /// Ordering hint; mirrors `CompositionEntry.position` for this Part at this revision.
   ordinal             Int      @default(1)
+  /// SECTION/ANNEX fragment for this revision; null for MONOLITH_BODY / legacy monolith (ADR 0008).
+  markdownBody        String?  @db.Text
   createdAt           DateTime @default(now())
 
+  @@unique([instrumentVersionId, partId])
   @@index([partId])
 }
 

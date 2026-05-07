@@ -119,6 +119,13 @@ Páginas `/public/**` usam `dynamic = "force-dynamic"` para build sem Postgres e
 | **Legacy** (`/api/instruments/*`, `/api/public/*`, …) | Canonical Hub pré-op; unchanged contracts. |
 | **DocHUB read facade v0** (`/api/doc-hub/v0/*`) | DocHUB-shaped **GET** routes (list/detail/composition/render/ledger + public mirror); see [ADR 0005](../docs/adr/0005-hub-preop-doc-hub-api-facade-v0.md), [ADR 0006](../docs/adr/0006-hub-preop-publication-layer-mvp.md). Writes remain on legacy routes only. |
 
+### Multi-Part editorial ([ADR 0008](../Docs/adr/0008-hub-preop-multipart-editorial-mvp.md))
+
+- **Create:** `POST /api/instruments` with `segments` (and no top-level `content`): each item `{ partKind: "SECTION" \| "ANNEX", position, markdownBody }`, positions `1..N` contiguous. Aggregate body and `contentHash` match concatenation with `\n\n` between segments.
+- **Append:** `POST /api/instruments/[id]/versions/multipart` with `{ bodiesByPartId: { "<partId>": "markdown", ... }, revisionNote? }` — multi-part profile only; monolith instruments keep using `POST .../content`.
+- **Add Part:** `POST /api/instruments/[id]/parts` with `{ partKind, initialMarkdown? }` — appends a new composition row and instrument version (SECTION/ANNEX only; not for monolith instruments).
+- **Migration:** `prisma/migrations/20260506140000_multipart_editorial_mvp` — run `npx prisma migrate deploy` after pull.
+
 - `GET /api/health` — JSON `{ ok, db }` after DB ping.
 - `GET /api/doc-hub/v0/health` — facade probe (no DB).
 - `GET /api/instruments/[id]/ledger` — append-only ledger slice for one instrument (authenticated registrar, reviewer, or admin).

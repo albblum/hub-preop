@@ -10,6 +10,28 @@ describe("validation", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it("accepts multi-part create with contiguous segment positions", () => {
+    const result = createInstrumentBodySchema.safeParse({
+      title: "Multi",
+      layer: 1,
+      segments: [
+        { partKind: "SECTION", position: 1, markdownBody: "A" },
+        { partKind: "ANNEX", position: 2, markdownBody: "B" },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects content when segments are provided", () => {
+    const result = createInstrumentBodySchema.safeParse({
+      title: "Multi",
+      layer: 1,
+      content: "body",
+      segments: [{ partKind: "SECTION", position: 1, markdownBody: "A" }],
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("database connectivity", () => {

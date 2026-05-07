@@ -164,3 +164,4 @@ Smoke manual: `docker compose up -d`, `npx prisma migrate deploy`, `npm run dev`
 - `middleware.ts` — prefixos protegidos
 - `auth.config.ts`, `auth.ts` — OAuth opcional e Credentials
 - [ADR 0007](../../Docs/adr/0007-hub-preop-git-edit-agent-mvp.md) — limites de privacidade e agente
+- [ADR 0008](../../Docs/adr/0008-hub-preop-multipart-editorial-mvp.md) — multi-Part editorial; após deploy, aplicar migração `20260506140000_multipart_editorial_mvp` (`PartVersion.markdownBody`, unique `(instrumentVersionId, partId)`). `npm run backfill:parts` continua a actuar só em instrumentos **monolíticos**.

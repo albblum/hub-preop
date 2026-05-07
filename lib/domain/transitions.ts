@@ -34,8 +34,11 @@ export function assertTransitionAllowed(from: string, to: string): void {
 
 export class DomainError extends Error {
   readonly code = "DOMAIN_ERROR";
-  constructor(message: string) {
+  /** Stable machine code for HTTP mapping (optional). */
+  readonly domainCode?: string;
+  constructor(message: string, domainCode?: string) {
     super(message);
     this.name = "DomainError";
+    this.domainCode = domainCode;
   }
 }

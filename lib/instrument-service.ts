@@ -1,4 +1,12 @@
-import type { ActorKind, Instrument, InstrumentVersion, LedgerEntry, TransitionEvent } from "@prisma/client";
+import type {
+  ActorKind,
+  Instrument,
+  InstrumentVersion,
+  LedgerEntry,
+  Prisma,
+  PrismaClient,
+  TransitionEvent,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isParentDerivationValid } from "@/lib/domain/derivation";
 import { resolveTransitionTarget } from "@/lib/domain/transition-policy";
@@ -10,6 +18,7 @@ import { pickVersionAt, resolveStatusAt } from "@/lib/integrity/as-of";
 import { appendTransitionLedger, appendVersionLedger } from "@/lib/ledger/append-ledger";
 import {
   PART_KIND_ANNEX,
+  PART_KIND_MONOLITH_BODY,
   PART_KIND_SECTION,
   assembleInstrumentMarkdown,
   isMonolithCompositionProfile,
@@ -20,6 +29,178 @@ import {
 import { mapInstrumentStatusToPartStatus } from "@/lib/domain/part-status";
 
 const INITIAL_STATUS = "draft";
+
+type DbClient = Prisma.TransactionClient | PrismaClient;
+
+export type TransitionMonolithToMultipartDryRunResult = {
+  dryRun: true;
+  report: {
+    instrumentId: string;
+    currentVersionRecordId: string;
+    monolithPartId: string;
+    contentLength: number;
+    contentHash: string;
+  };
+};
+
+type MonolithTransitionContext = {
+  instrument: Instrument & { currentVersionRecord: InstrumentVersion | null };
+  head: InstrumentVersion;
+  monolithPartId: string;
+};
+
+async function loadMonolithTransitionContext(
+  db: DbClient,
+  instrumentId: string,
+): Promise<MonolithTransitionContext> {
+  const instrument = await db.instrument.findUnique({
+    where: { id: instrumentId },
+    include: { currentVersionRecord: true },
+  });
+  if (!instrument) {
+    throw new DomainError("Instrument not found", "INSTRUMENT_NOT_FOUND");
+  }
+  const head = instrument.currentVersionRecord;
+  if (!head) {
+    throw new DomainError(
+      "Instrument has no current version",
+      "NO_CURRENT_VERSION",
+    );
+  }
+  if (!verifyContentHash(head)) {
+    throw new IntegrityViolationError(
+      "Stored contentHash does not match content for head version",
+    );
+  }
+
+  const entries = await db.compositionEntry.findMany({
+    where: { instrumentId },
+    orderBy: { position: "asc" },
+    include: { part: true },
+  });
+  const eligible =
+    entries.length === 1 &&
+    entries[0].position === 1 &&
+    entries[0].part.partKind === PART_KIND_MONOLITH_BODY;
+
+  if (!eligible) {
+    const isMono = await isMonolithCompositionProfile(db, instrumentId);
+    if (!isMono) {
+      throw new DomainError(
+        "Instrument is already on multi-part profile (ADR 0009)",
+        "ALREADY_MULTIPART_PROFILE",
+      );
+    }
+    throw new DomainError(
+      "Instrument does not meet monolith transition preconditions (exactly one MONOLITH_BODY composition entry at position 1)",
+      "MONOLITH_TRANSITION_PRECONDITION_FAILED",
+    );
+  }
+
+  const monolithPartId = entries[0].partId;
+  const monoPv = await db.partVersion.findUnique({
+    where: {
+      instrumentVersionId_partId: {
+        instrumentVersionId: head.id,
+        partId: monolithPartId,
+      },
+    },
+  });
+  if (!monoPv || monoPv.markdownBody !== null) {
+    throw new DomainError(
+      "Current head PartVersion for MONOLITH_BODY must exist with markdownBody null",
+      "MONOLITH_TRANSITION_PRECONDITION_FAILED",
+    );
+  }
+
+  return { instrument, head, monolithPartId };
+}
+
+/** ADR 0009 — controlled monolith → minimal multi-part (one SECTION at position 1). */
+export async function transitionMonolithToMultipartProfile(input: {
+  instrumentId: string;
+  dryRun?: boolean;
+}): Promise<InstrumentDetail | TransitionMonolithToMultipartDryRunResult> {
+  const { instrumentId, dryRun } = input;
+
+  const ctx = await loadMonolithTransitionContext(prisma, instrumentId);
+
+  if (dryRun) {
+    return {
+      dryRun: true,
+      report: {
+        instrumentId: ctx.instrument.id,
+        currentVersionRecordId: ctx.head.id,
+        monolithPartId: ctx.monolithPartId,
+        contentLength: ctx.head.content.length,
+        contentHash: ctx.head.contentHash,
+      },
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const inner = await loadMonolithTransitionContext(tx, instrumentId);
+    const partStatus = mapInstrumentStatusToPartStatus(inner.instrument.status);
+
+    const sectionPart = await tx.part.create({
+      data: {
+        instrumentId,
+        partKind: PART_KIND_SECTION,
+        partStatus,
+      },
+    });
+
+    await tx.partVersion.create({
+      data: {
+        partId: sectionPart.id,
+        instrumentVersionId: inner.head.id,
+        contentHash: inner.head.contentHash,
+        ordinal: 1,
+        markdownBody: inner.head.content,
+      },
+    });
+
+    await tx.compositionEntry.delete({
+      where: {
+        instrumentId_position: {
+          instrumentId,
+          position: 1,
+        },
+      },
+    });
+
+    await tx.compositionEntry.create({
+      data: {
+        instrumentId,
+        partId: sectionPart.id,
+        position: 1,
+      },
+    });
+
+    await tx.partVersion.delete({
+      where: {
+        instrumentVersionId_partId: {
+          instrumentVersionId: inner.head.id,
+          partId: inner.monolithPartId,
+        },
+      },
+    });
+  });
+
+  const detail = await getInstrumentById(instrumentId);
+  if (!detail) {
+    throw new Error("Instrument disappeared after transition");
+  }
+  return detail;
+}
+
+/** Feature flag for ADR 0009 transition (HTTP route and CLI gate). */
+export function isMonolithToMultipartTransitionEnabled(): boolean {
+  const v = process.env.TRANSITION_MONOLITH_TO_MULTIPART_ENABLED;
+  if (v === undefined || v === "") return false;
+  const s = v.trim().toLowerCase();
+  return s === "1" || s === "true";
+}
 
 function formatIdrRef(seq: number): string {
   return `idr:HUB-INSTR-${String(seq).padStart(8, "0")}`;

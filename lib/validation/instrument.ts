@@ -84,3 +84,7 @@ export const addInstrumentPartBodySchema = z.object({
   partKind: z.enum(["SECTION", "ANNEX"]),
   initialMarkdown: z.string().max(100_000).optional().nullable(),
 });
+
+export const transitionToMultipartBodySchema = z.object({
+  dryRun: z.boolean().optional(),
+});

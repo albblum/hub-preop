@@ -15,6 +15,26 @@ Documento mínimo para **secrets**, **arranque**, **backup e restore** da Postgr
 | `DATABASE_URL` | Ligação PostgreSQL (ex.: `postgresql://hub:hub@localhost:5432/hub_preop` com o compose por defeito). |
 | `AUTH_SECRET` | Segredo do Auth.js / NextAuth (sessões JWT). Gerar valor forte e único por ambiente (ex.: `openssl rand -base64 32`). |
 
+### Transição monólito → multiparte (ADR 0009)
+
+| Variável | Uso |
+|----------|-----|
+| `TRANSITION_MONOLITH_TO_MULTIPART_ENABLED` | Quando `1` ou `true` (case-insensitive), permite a operação; **ausente**, `0` ou `false` — desligada (a rota HTTP responde 403 `TRANSITION_DISABLED` sem tocar na BD). |
+
+**Quem pode:** mesmas roles que `canAppendContent` (`admin` ou `registrar`), com sessão (cookie) como nas outras rotas internas.
+
+**Endpoint:** `POST /api/instruments/[id]/transition-to-multipart` com corpo JSON opcional `{ "dryRun": true }`. Em dry-run, a resposta inclui `dryRun: true` e um `report` com ids e metadados do conteúdo **sem** escritos na base.
+
+**Limites:** um instrumento de cada vez; sem migração em lote; sem nova revisão nem entrada nova no ledger; reversão em laboratório = **restaurar backup** (secção 3 deste documento).
+
+**CLI (opcional):** com a flag activa e `DATABASE_URL` definida:
+
+```bash
+TRANSITION_MONOLITH_TO_MULTIPART_ENABLED=1 npm run transition:monolith-to-multipart -- --instrument-id "<cuid>" --dry-run
+```
+
+Evitar duas transições concorrentes no mesmo instrumento (um operador por alvo).
+
 ### Variáveis de seed (laboratório)
 
 Se usar `npm run seed:founding` ou equivalente, as passwords em `.env` (`SEED_ADMIN_PASSWORD`, `SEED_REVIEWER_PASSWORD`, `SEED_VIEWER_PASSWORD`) definem as credenciais dos utilizadores de desenvolvimento. **Altere-as** em qualquer ambiente que não seja descartável.
@@ -146,14 +166,24 @@ Qualquer envio de rascunhos a fornecedores LLM externos está **fora** do MVP e 
 
 ## 6. Validação recomendada após alterações operacionais
 
+### Verificação de confiabilidade (automatizada)
+
+Com Docker disponível e `.env` com `DATABASE_URL` alinhado ao Compose, um único comando em `hub-preop/` executa: subida do Postgres, espera por `pg_isready`, `prisma migrate deploy`, lint, testes Vitest **com** base de dados (saúde das rotas, fluxo documento único, fluxo multiparte) e build de produção.
+
+```bash
+npm run verify:reliability
+```
+
+Não substitui pen-test nem testes E2E com browser; exige Docker local (ou ambiente equivalente com Postgres acessível pela `DATABASE_URL`).
+
+### Validação rápida (CI / sem Docker)
+
 ```bash
 npm run lint
 npm run test:no-db
-# opcional, com DB disponível:
-npm test
 ```
 
-Smoke manual: `docker compose up -d`, `npx prisma migrate deploy`, `npm run dev`, depois `GET /api/health` com `ok: true` e `db: true`.
+Com base de dados local já migrada, opcionalmente: `npm test`.
 
 ---
 

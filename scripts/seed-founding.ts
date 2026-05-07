@@ -109,6 +109,7 @@ async function ensureInstrument(spec: {
 }
 
 async function main() {
+  const skipInstruments = process.env.SEED_SKIP_INSTRUMENTS === "1" || process.env.SEED_SKIP_INSTRUMENTS === "true";
   const adminPass = process.env.SEED_ADMIN_PASSWORD ?? "ChangeMeAdmin!";
   const reviewerPass = process.env.SEED_REVIEWER_PASSWORD ?? "ChangeMeReviewer!";
   const viewerPass = process.env.SEED_VIEWER_PASSWORD ?? "ChangeMeViewer!";
@@ -132,31 +133,35 @@ async function main() {
     roles: ["viewer_public"],
   });
 
-  const framework = await ensureInstrument({
-    idrRef: "idr:HUB-INSTR-00009001",
-    title: "MOC — Framework (founding placeholder)",
-    layer: 1,
-    status: "in-force",
-    draftingAuthority: "regional-placeholder",
-    content:
-      "Founding placeholder for the **Framework** pillar (MOC). Full text lives in governed docs; " +
-      "this row proves idr:ref allocation, versioning, and operational listing.\n\n" +
-      "See also: Document Hub (Tech Specs) seed sibling.",
-    parentInstrumentId: null,
-  });
+  if (skipInstruments) {
+    console.log("SEED_SKIP_INSTRUMENTS set — users only, no placeholder instruments.");
+  } else {
+    const framework = await ensureInstrument({
+      idrRef: "idr:HUB-INSTR-00009001",
+      title: "MOC — Framework (founding placeholder)",
+      layer: 1,
+      status: "in-force",
+      draftingAuthority: "regional-placeholder",
+      content:
+        "Founding placeholder for the **Framework** pillar (MOC). Full text lives in governed docs; " +
+        "this row proves idr:ref allocation, versioning, and operational listing.\n\n" +
+        "See also: Document Hub (Tech Specs) seed sibling.",
+      parentInstrumentId: null,
+    });
 
-  await ensureInstrument({
-    idrRef: "idr:HUB-INSTR-00009002",
-    title: "Document Hub (Tech Specs) — founding stub",
-    layer: 2,
-    status: "normalization-pending",
-    draftingAuthority: "regional-placeholder",
-    parentInstrumentId: framework.id,
-    content:
-      "Founding placeholder referencing the **Document Hub (Tech Specs)**. Use the normalization queue " +
-      "to resolve this item (in-force, under-review for GA, or revoked).\n\n" +
-      "Link-style summary only in MVP; operational proof over full publication.",
-  });
+    await ensureInstrument({
+      idrRef: "idr:HUB-INSTR-00009002",
+      title: "Document Hub (Tech Specs) — founding stub",
+      layer: 2,
+      status: "normalization-pending",
+      draftingAuthority: "regional-placeholder",
+      parentInstrumentId: framework.id,
+      content:
+        "Founding placeholder referencing the **Document Hub (Tech Specs)**. Use the normalization queue " +
+        "to resolve this item (in-force, under-review for GA, or revoked).\n\n" +
+        "Link-style summary only in MVP; operational proof over full publication.",
+    });
+  }
 
   await syncIdrSequenceFromInstruments();
   console.log("Founding seed completed.");

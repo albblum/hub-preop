@@ -26,6 +26,11 @@ describe("status transitions (MVP matrix)", () => {
   it("disallows draft -> in-force directly", () => {
     expect(isTransitionAllowed("draft", "in-force")).toBe(false);
   });
+
+  it("accepts document-specific profile parameter without changing MVP behavior", () => {
+    expect(isTransitionAllowed("under-review", "in-force", "constitutional")).toBe(true);
+    expect(isTransitionAllowed("draft", "in-force", "institutional")).toBe(false);
+  });
 });
 
 describe("transition policy + derivation gate", () => {

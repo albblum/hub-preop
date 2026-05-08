@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -16,6 +16,7 @@ type MultipartSegment = {
 type InstrumentDetail = {
   id: string;
   idrRef: string;
+  committeeId?: string | null;
   title: string;
   status: string;
   layer: number;
@@ -42,6 +43,20 @@ function isMultipartEditorActive(d: InstrumentDetail): boolean {
   return d.compositionProfile === "multipart";
 }
 
+// Paridade com ADR 0008 e assembleInstrumentMarkdown no servidor; nao importar part-composition no cliente.
+const MULTIPART_MARKDOWN_SEPARATOR = "\n\n";
+
+function segmentAnchorId(seg: MultipartSegment): string {
+  return `segmento-${seg.position}-${seg.partId}`;
+}
+
+function assembleMultipartPreview(
+  orderedSegments: MultipartSegment[],
+  bodiesByPartId: Record<string, string>,
+): string {
+  return orderedSegments.map((seg) => bodiesByPartId[seg.partId] ?? "").join(MULTIPART_MARKDOWN_SEPARATOR);
+}
+
 export default function InstrumentEditPage() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
@@ -58,7 +73,23 @@ export default function InstrumentEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const mayAppend = canAppendContent(session?.user?.roles);
+  const mayAppend = canAppendContent(
+    session?.user?.roles,
+    session?.user?.committeeMemberships,
+    detail?.committeeId ?? null,
+  );
+  const isEditingMultipart = detail ? isMultipartEditorActive(detail) : false;
+  const multipartSegments = detail?.multipartSegments ?? [];
+  const multipartPreview = isEditingMultipart
+    ? assembleMultipartPreview(multipartSegments, partBodies)
+    : "";
+  const multipartBodiesLoaded =
+    multipartSegments.length > 0 && multipartSegments.every((s) => s.partId in partBodies);
+  const canSubmit =
+    !!detail &&
+    mayAppend &&
+    !saving &&
+    (isEditingMultipart ? multipartBodiesLoaded : content.length > 0);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -70,10 +101,10 @@ export default function InstrumentEditPage() {
       });
       if (res.status === 404) {
         setDetail(null);
-        setError("Instrument not found");
+        setError("Instrumento não encontrado.");
         return;
       }
-      if (!res.ok) throw new Error(`Load failed: ${res.status}`);
+      if (!res.ok) throw new Error(`Falha ao carregar: ${res.status}`);
       const data = (await res.json()) as InstrumentDetail;
       setDetail(data);
       if (isMultipartEditorActive(data)) {
@@ -88,7 +119,7 @@ export default function InstrumentEditPage() {
         setContent(data.currentVersionRecord?.content ?? "");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : "Não foi possível carregar o instrumento.");
     } finally {
       setLoading(false);
     }
@@ -98,7 +129,7 @@ export default function InstrumentEditPage() {
     void load();
   }, [load]);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!mayAppend || !id || !detail) return;
     setSaving(true);
@@ -126,15 +157,15 @@ export default function InstrumentEditPage() {
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? `Save failed (${res.status})`);
+        setError(body.error ? `Não foi possível salvar: ${body.error}` : `Não foi possível salvar (${res.status}).`);
         return;
       }
-      setSuccess("New version recorded via Hub API.");
+      setSuccess("Nova versão registrada pela API do Hub.");
       setRevisionNote("");
       await load();
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      setError(e instanceof Error ? e.message : "Não foi possível salvar.");
     } finally {
       setSaving(false);
     }
@@ -143,7 +174,7 @@ export default function InstrumentEditPage() {
   if (sessionStatus === "loading" || loading) {
     return (
       <div className="min-h-screen bg-zinc-950 p-8 text-zinc-100">
-        <p className="text-sm text-zinc-400">Loading…</p>
+        <p className="text-sm text-zinc-400">Carregando…</p>
       </div>
     );
   }
@@ -151,9 +182,9 @@ export default function InstrumentEditPage() {
   if (sessionStatus === "unauthenticated") {
     return (
       <div className="min-h-screen bg-zinc-950 p-8 text-zinc-100">
-        <p className="mb-4 text-sm text-zinc-400">Sign in to edit instruments.</p>
+        <p className="mb-4 text-sm text-zinc-400">Entre para editar instrumentos.</p>
         <Link className="text-amber-200/90 underline" href="/login">
-          Sign in
+          Entrar
         </Link>
       </div>
     );
@@ -161,10 +192,12 @@ export default function InstrumentEditPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 p-8 font-sans text-zinc-100">
-      <main className="mx-auto max-w-6xl space-y-6">
+      <main aria-labelledby="edit-page-title" className="mx-auto max-w-6xl space-y-6">
         <header className="flex flex-wrap items-baseline justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">Edit Markdown</h1>
+            <h1 id="edit-page-title" className="text-xl font-semibold tracking-tight">
+              Editar Markdown
+            </h1>
             {detail && (
               <p className="mt-1 text-sm text-zinc-400">
                 {detail.title} · {detail.idrRef} · v{detail.currentVersion} · {detail.status}
@@ -172,57 +205,107 @@ export default function InstrumentEditPage() {
             )}
           </div>
           <Link className="text-sm text-amber-200/90 underline" href="/">
-            ← Hub home
+            ← Início do Hub
           </Link>
         </header>
 
         {!mayAppend && (
           <p className="rounded-lg border border-amber-900/80 bg-amber-950/40 px-4 py-3 text-sm text-amber-100/90">
-            Your role cannot append content. Only <code className="text-xs">admin</code> or{" "}
-            <code className="text-xs">registrar</code> may submit a new version via the API.
+            Seu perfil não pode acrescentar conteúdo. Apenas <code className="text-xs">admin</code> ou{" "}
+            <code className="text-xs">registrar</code> podem enviar uma nova versão pela API.
           </p>
         )}
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        {success && <p className="text-sm text-emerald-400">{success}</p>}
+        {error && (
+          <p className="rounded-md border border-red-900/70 bg-red-950/30 px-4 py-3 text-sm text-red-200" role="alert">
+            {error}
+          </p>
+        )}
+        {success && (
+          <p className="rounded-md border border-emerald-900/70 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200" aria-live="polite">
+            {success}
+          </p>
+        )}
 
         {detail && (
           <form onSubmit={onSubmit} className="space-y-4">
-            {isMultipartEditorActive(detail) ? (
+            {isEditingMultipart ? (
               <div className="space-y-6">
                 <p className="text-sm text-zinc-400">
-                  This instrument uses the <strong className="text-zinc-300">multi-part</strong> profile (ADR
-                  0008). Edit each part below; the Hub aggregates segments with a stable{" "}
-                  <code className="text-xs text-amber-200/90">\n\n</code> join for versioning.
+                  Este instrumento usa o perfil <strong className="text-zinc-300">multiparte</strong> (ADR
+                  0008). Edite cada segmento abaixo; o Hub agrega os segmentos com a junção estável{" "}
+                  <code className="text-xs text-amber-200/90">\n\n</code> antes de registrar a versão.
                 </p>
-                {detail.multipartSegments.map((seg) => (
-                  <div key={seg.partId} className="grid gap-4 lg:grid-cols-2">
-                    <label className="flex flex-col gap-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                        {seg.partKind} · position {seg.position}
-                      </span>
+
+                {multipartSegments.length >= 2 && (
+                  <nav
+                    aria-label="Navegação entre segmentos"
+                    className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-4"
+                  >
+                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                      Ir para segmento
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {multipartSegments.map((seg) => (
+                        <a
+                          key={seg.partId}
+                          className="rounded-full border border-zinc-700 px-3 py-1 text-sm text-amber-100 hover:border-amber-200/80"
+                          href={`#${segmentAnchorId(seg)}`}
+                        >
+                          {seg.partKind} · posição {seg.position}
+                        </a>
+                      ))}
+                    </div>
+                  </nav>
+                )}
+
+                {multipartSegments.map((seg) => {
+                  const anchorId = segmentAnchorId(seg);
+                  const titleId = `${anchorId}-titulo`;
+                  const body = partBodies[seg.partId] ?? "";
+                  return (
+                    <section
+                      key={seg.partId}
+                      id={anchorId}
+                      aria-labelledby={titleId}
+                      className="scroll-mt-6 rounded-xl border border-zinc-800 bg-zinc-900/20 p-4"
+                    >
+                      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                        <h2 id={titleId} className="text-sm font-semibold text-zinc-200">
+                          {seg.partKind} · posição {seg.position}
+                        </h2>
+                        <p className="text-xs text-zinc-500">{body.length} caracteres</p>
+                      </div>
                       <textarea
-                        className="min-h-[200px] rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm leading-relaxed text-zinc-100 disabled:opacity-50 lg:min-h-[280px]"
-                        value={partBodies[seg.partId] ?? ""}
+                        aria-labelledby={titleId}
+                        className="min-h-[200px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm leading-relaxed text-zinc-100 disabled:opacity-50 lg:min-h-[280px]"
+                        value={body}
                         onChange={(e) =>
                           setPartBodies((prev) => ({ ...prev, [seg.partId]: e.target.value }))
                         }
                         disabled={!mayAppend || saving}
                         spellCheck
                       />
-                    </label>
-                    <div className="flex flex-col gap-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                        Preview
-                      </span>
-                      <div className="min-h-[200px] overflow-auto rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-sm leading-relaxed text-zinc-200 lg:min-h-[280px]">
-                        <pre className="whitespace-pre-wrap font-sans">
-                          {partBodies[seg.partId] ?? ""}
-                        </pre>
-                      </div>
-                    </div>
+                    </section>
+                  );
+                })}
+
+                <section
+                  aria-labelledby="preview-agregado-titulo"
+                  className="rounded-xl border border-amber-900/60 bg-amber-950/10 p-4"
+                >
+                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                    <h2 id="preview-agregado-titulo" className="text-sm font-semibold text-amber-100">
+                      Pré-visualização agregada
+                    </h2>
+                    <p className="text-xs text-zinc-500">
+                      Ordem da composição · separador <code className="text-amber-200/90">\n\n</code>
+                    </p>
                   </div>
-                ))}
+                  <div className="max-h-[420px] overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm leading-relaxed text-zinc-200">
+                    <pre className="whitespace-pre-wrap font-sans">{multipartPreview}</pre>
+                  </div>
+                </section>
               </div>
             ) : (
               <div className="grid gap-6 lg:grid-cols-2">
@@ -240,7 +323,7 @@ export default function InstrumentEditPage() {
                 </label>
                 <div className="flex flex-col gap-2">
                   <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    Preview (minimal — line breaks preserved)
+                    Pré-visualização (simples — quebras de linha preservadas)
                   </span>
                   <div className="min-h-[min(70vh,520px)] overflow-auto rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-sm leading-relaxed text-zinc-200">
                     <pre className="whitespace-pre-wrap font-sans">{content}</pre>
@@ -250,7 +333,7 @@ export default function InstrumentEditPage() {
             )}
 
             <label className="flex max-w-xl flex-col gap-1 text-sm">
-              <span className="text-zinc-400">Revision note (optional)</span>
+              <span className="text-zinc-400">Nota de revisão (opcional)</span>
               <input
                 className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 disabled:opacity-50"
                 value={revisionNote}
@@ -262,31 +345,22 @@ export default function InstrumentEditPage() {
 
             <button
               type="submit"
-              disabled={
-                !mayAppend ||
-                saving ||
-                (isMultipartEditorActive(detail)
-                  ? Object.keys(partBodies).length === 0 ||
-                    !detail.multipartSegments?.every((s) => s.partId in partBodies)
-                  : content.length === 0)
-              }
+              disabled={!canSubmit}
               className="rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               {saving
-                ? "Submitting…"
-                : isMultipartEditorActive(detail)
-                  ? "Submit new version (multi-part)"
-                  : "Submit new version (monolith)"}
+                ? "Enviando nova versão…"
+                : isEditingMultipart
+                  ? "Enviar nova versão multiparte"
+                  : "Enviar nova versão monólito"}
             </button>
 
             {mayAppend && !saving && detail && (
               <p className="text-xs text-zinc-500">
-                {!isMultipartEditorActive(detail) && content.length === 0
-                  ? "The editor is empty — add markdown before submitting."
-                  : isMultipartEditorActive(detail) &&
-                      (Object.keys(partBodies).length === 0 ||
-                        !detail.multipartSegments?.every((s) => s.partId in partBodies))
-                    ? "Multi-part bodies did not load correctly — try refreshing. If it persists, run backfill: npm run backfill:parts (from hub-preop, DB running)."
+                {!isEditingMultipart && content.length === 0
+                  ? "O editor está vazio — adicione Markdown antes de enviar."
+                  : isEditingMultipart && !multipartBodiesLoaded
+                    ? "Os corpos multiparte não carregaram corretamente — atualize a página. Se persistir, rode npm run backfill:parts em hub-preop com o banco ativo."
                     : null}
               </p>
             )}
@@ -294,8 +368,8 @@ export default function InstrumentEditPage() {
         )}
 
         <p className="text-xs text-zinc-600">
-          Official text is recorded only after a successful Hub API append; this page does not bypass the
-          ledger.
+          O texto oficial só é registrado após um append bem-sucedido pela API do Hub; esta página não
+          contorna o ledger.
         </p>
       </main>
     </div>

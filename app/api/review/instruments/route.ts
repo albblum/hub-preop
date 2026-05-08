@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   if (!session?.user) {
     return jsonUnauthorized();
   }
-  if (!canViewOperationalQueues(session.user.roles)) {
+  if (!canViewOperationalQueues(session.user.roles, session.user.committeeMemberships)) {
     return jsonForbidden("Insufficient role for review reads");
   }
 

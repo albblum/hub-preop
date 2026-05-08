@@ -123,7 +123,7 @@ export default function Home() {
                 <Link className="text-amber-200/90 underline" href="/normalization">
                   Normalization
                 </Link>
-                <Link className="text-amber-200/90 underline" href="/review/idr%3AHUB-INSTR-00009001">
+                <Link className="text-amber-200/90 underline" href="/review">
                   Review reader
                 </Link>
               </>

@@ -4,6 +4,8 @@ export const LEDGER_ENTRY_TYPES = {
   VERSION_RECORDED: "VERSION_RECORDED",
   /** Status change; `payloadHash` = canonical hash of the transition event record. */
   STATUS_TRANSITION: "STATUS_TRANSITION",
+  /** Comité — acto formal registado (consulta, deliberação, aprovação); payloadHash = hash canónico do corpo. */
+  COMMITTEE_PROCESS_RECORD: "COMMITTEE_PROCESS_RECORD",
 } as const;
 
 export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[keyof typeof LEDGER_ENTRY_TYPES];

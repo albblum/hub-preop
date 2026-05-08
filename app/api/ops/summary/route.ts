@@ -12,7 +12,7 @@ export async function GET() {
   if (!session?.user) {
     return jsonUnauthorized();
   }
-  if (!canViewOperationalQueues(session.user.roles)) {
+  if (!canViewOperationalQueues(session.user.roles, session.user.committeeMemberships)) {
     return NextResponse.json(
       { error: "Insufficient role for ops summary", code: "FORBIDDEN" },
       { status: 403 },

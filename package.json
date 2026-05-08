@@ -26,6 +26,8 @@
     "db:backup": "bash scripts/backup-db.sh",
     "db:restore": "bash scripts/restore-db.sh",
     "verify:reliability": "bash scripts/verify-reliability.sh",
+    "check:env": "bash scripts/check-env.sh",
+    "db:reset": "prisma migrate reset --force",
     "transition:monolith-to-multipart": "tsx scripts/transition-monolith-to-multipart.ts",
     "postinstall": "prisma generate"
   },

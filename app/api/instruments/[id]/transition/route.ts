@@ -14,7 +14,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (!session?.user) {
     return jsonUnauthorized();
   }
-  if (!canTransition(session.user.roles)) {
+  if (!canTransition(session.user.roles, session.user.committeeMemberships)) {
     return jsonForbidden("Insufficient role for transitions");
   }
 

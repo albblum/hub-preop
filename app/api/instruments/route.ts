@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     if (!session?.user) {
       return jsonUnauthorized();
     }
-    if (!canViewOperationalQueues(session.user.roles)) {
+    if (!canViewOperationalQueues(session.user.roles, session.user.committeeMemberships)) {
       return jsonForbidden("Insufficient role for filtered instrument lists");
     }
   }
@@ -80,6 +80,7 @@ export async function POST(request: Request) {
     const created = hasSegments
       ? await createMultipartInstrument({
           title: parsed.data.title,
+          documentType: parsed.data.documentType,
           layer: parsed.data.layer,
           draftingAuthority: parsed.data.draftingAuthority,
           parentInstrumentId: parsed.data.parentInstrumentId,
@@ -87,6 +88,7 @@ export async function POST(request: Request) {
         })
       : await createInstrument({
           title: parsed.data.title,
+          documentType: parsed.data.documentType,
           layer: parsed.data.layer,
           draftingAuthority: parsed.data.draftingAuthority,
           content: parsed.data.content,

@@ -14,11 +14,22 @@ export async function POST(request: Request, context: RouteContext) {
   if (!session?.user) {
     return jsonUnauthorized();
   }
-  if (!canAppendContent(session.user.roles)) {
-    return jsonForbidden("Insufficient role to update content");
-  }
 
   const { id } = await context.params;
+
+  const inst = await getInstrumentById(id);
+  if (!inst) {
+    return NextResponse.json({ error: "Instrument not found" }, { status: 404 });
+  }
+  if (
+    !canAppendContent(
+      session.user.roles,
+      session.user.committeeMemberships,
+      inst.committeeId ?? null,
+    )
+  ) {
+    return jsonForbidden("Insufficient role to update content");
+  }
 
   let body: unknown;
   try {
@@ -33,11 +44,6 @@ export async function POST(request: Request, context: RouteContext) {
       { error: "Validation failed", issues: parsed.error.flatten() },
       { status: 400 },
     );
-  }
-
-  const inst = await getInstrumentById(id);
-  if (!inst) {
-    return NextResponse.json({ error: "Instrument not found" }, { status: 404 });
   }
 
   try {

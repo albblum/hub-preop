@@ -34,7 +34,7 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const session = await auth();
-    if (!canUseExportMode(session?.user?.roles, mode)) {
+    if (!canUseExportMode(session?.user?.roles, mode, session?.user?.committeeMemberships ?? [])) {
       return jsonForbidden("Requested mode not allowed for current role");
     }
 

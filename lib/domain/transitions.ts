@@ -18,16 +18,48 @@ const ALLOWED: Record<CanonicalStatus, readonly CanonicalStatus[]> = {
   "normalization-pending": ["in-force", "under-review", "revoked"],
 };
 
-export function isTransitionAllowed(from: string, to: string): boolean {
-  const next = ALLOWED[from as CanonicalStatus];
+/**
+ * Transition profile hook for future document-specific flow regimes.
+ * MVP keeps all profiles mapped to the same canonical matrix.
+ */
+export type TransitionMatrixProfile =
+  | "generic"
+  | "constitutional"
+  | "operational"
+  | "institutional";
+
+const ALLOWED_BY_PROFILE: Record<
+  TransitionMatrixProfile,
+  Record<CanonicalStatus, readonly CanonicalStatus[]>
+> = {
+  generic: ALLOWED,
+  constitutional: ALLOWED,
+  operational: ALLOWED,
+  institutional: ALLOWED,
+};
+
+function allowedFor(profile: TransitionMatrixProfile): Record<CanonicalStatus, readonly CanonicalStatus[]> {
+  return ALLOWED_BY_PROFILE[profile];
+}
+
+export function isTransitionAllowed(
+  from: string,
+  to: string,
+  profile: TransitionMatrixProfile = "generic",
+): boolean {
+  const next = allowedFor(profile)[from as CanonicalStatus];
   if (!next) return false;
   return (next as readonly string[]).includes(to);
 }
 
-export function assertTransitionAllowed(from: string, to: string): void {
-  if (!isTransitionAllowed(from, to)) {
+export function assertTransitionAllowed(
+  from: string,
+  to: string,
+  profile: TransitionMatrixProfile = "generic",
+): void {
+  if (!isTransitionAllowed(from, to, profile)) {
     throw new DomainError(
-      `Transition not allowed: ${from} -> ${to}. See MVP transition matrix in Fase3_Core_Registry_MVP.md.`,
+      `Transition not allowed: ${from} -> ${to} (profile: ${profile}). See MVP transition matrix in Fase3_Core_Registry_MVP.md.`,
     );
   }
 }

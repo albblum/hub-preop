@@ -11,7 +11,9 @@ import { jsonForbidden } from "@/lib/api-http";
  */
 export async function GET(request: Request) {
   const session = await auth();
-  if (!canViewOperationalQueues(session?.user?.roles)) {
+  if (
+    !canViewOperationalQueues(session?.user?.roles, session?.user?.committeeMemberships ?? [])
+  ) {
     return jsonForbidden("Ledger requires registrar, reviewer, or admin session");
   }
 

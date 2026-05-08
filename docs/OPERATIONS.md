@@ -79,6 +79,37 @@ curl -sS http://localhost:3000/api/health
 curl -sS http://localhost:3000/api/doc-hub/v0/health
 ```
 
+### Facade DocHUB v0 — escrita multi-Part (ADR 0010)
+
+- **`POST /api/doc-hub/v0/instruments/{docId}/versions/multipart`** — mesmo contrato de corpo que `POST /api/instruments/{id}/versions/multipart` (`bodiesByPartId`, `revisionNote` opcional). O `{docId}` no path é **cuid** ou **`idrRef`** (codificar `:` em URL, ex. `idr%3AHUB-INSTR-00000001`).
+- **RBAC:** sessão com papel `admin` ou `registrar` (`canAppendContent`), como na rota canónica.
+- Resposta: JSON em forma DocHUB (`docId`, `instrumentId`, …) após sucesso.
+
+Exemplo (substituir cookie de sessão válido):
+
+```bash
+curl -sS -X POST "http://localhost:3000/api/doc-hub/v0/instruments/idr%3AHUB-INSTR-00000001/versions/multipart" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=<valor>" \
+  -d '{"bodiesByPartId":{"<partId>":"# Corpo"},"revisionNote":"via facade"}'
+```
+
+---
+
+## 2.1 Base de dados limpa (laboratório — **destrutivo**)
+
+Apaga **todos** os dados e reaplica migrações do zero (esquema vazio, sem utilizadores nem instrumentos). **Nunca** usar em produção.
+
+Com Postgres acessível pela `DATABASE_URL` (ex.: `docker compose up -d`):
+
+```bash
+npx prisma migrate reset --force
+```
+
+Atalho: `npm run db:reset` (equivalente). O Prisma pode exigir confirmação extra em alguns ambientes de agente; em terminal local o comando acima é suficiente.
+
+Depois, recriar utilizadores com `npm run seed:founding` ou `npm run seed:users-only` se precisares de login de teste.
+
 ---
 
 ## 3. Backup da base (Docker Compose atual)
@@ -150,13 +181,20 @@ Checklist curto:
 
 ### Rotas de UI protegidas pelo middleware
 
-O `middleware.ts` exige sessão para prefixos:
+O `middleware.ts` exige sessão para:
 
-- `/ops`
-- `/normalization`
-- `/review`
+- `/ops/*`
+- `/normalization/*`
+- `/review` (índice de documentos para leitura de revisão)
+- `/review/*` (leitura de um documento por `idrRef`)
+- **`/instruments/{id}/edit`** — edição de Markdown (evita carregar a página sem sessão; a API continua com RBAC próprio).
 
 Utilizadores não autenticados são redirecionados para `/login` com `callbackUrl` preservado.
+
+### Robustecimento HTTP (configuração Next)
+
+- **`next.config.ts`:** cabeçalhos em todas as respostas — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` (câmara/microfone/geolocalização desligados). Com **`NODE_ENV=production`**, acrescenta **`Strict-Transport-Security`** — em deploy real use **HTTPS** (TLS no proxy ou no host).
+- **`npm run check:env`** — verifica `.env` mínimo (`DATABASE_URL`, `AUTH_SECRET` com ≥ 16 caracteres). Se não existir `.env`, sai com sucesso (útil em CI sem secrets locais). O gate **`npm run verify:reliability`** chama este passo após `prisma migrate deploy`.
 
 ### Privacidade / agente (MVP)
 
@@ -168,7 +206,7 @@ Qualquer envio de rascunhos a fornecedores LLM externos está **fora** do MVP e 
 
 ### Verificação de confiabilidade (automatizada)
 
-Com Docker disponível e `.env` com `DATABASE_URL` alinhado ao Compose, um único comando em `hub-preop/` executa: subida do Postgres, espera por `pg_isready`, `prisma migrate deploy`, lint, testes Vitest **com** base de dados (saúde das rotas, fluxo documento único, fluxo multiparte) e build de produção.
+Com Docker disponível e `.env` com `DATABASE_URL` alinhado ao Compose, um único comando em `hub-preop/` executa: subida do Postgres, espera por `pg_isready`, `prisma migrate deploy`, **`check-env`** (se existir `.env`), lint, testes Vitest **com** base de dados (saúde das rotas, fluxo documento único, fluxo multiparte) e build de produção.
 
 ```bash
 npm run verify:reliability

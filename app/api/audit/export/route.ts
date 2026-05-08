@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const session = await auth();
   const url = new URL(request.url);
   const mode = defaultExportMode(url.searchParams.get("mode"));
-  if (!canUseExportMode(session?.user?.roles, mode)) {
+  if (!canUseExportMode(session?.user?.roles, mode, session?.user?.committeeMemberships ?? [])) {
     return jsonForbidden("Export mode not allowed for current role");
   }
   const idrRefs = parseCommaList(url.searchParams.get("idrRefs"));
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   }
 
   const mode = parsed.data.mode ?? "public";
-  if (!canUseExportMode(session?.user?.roles, mode)) {
+  if (!canUseExportMode(session?.user?.roles, mode, session?.user?.committeeMemberships ?? [])) {
     return jsonForbidden("Export mode not allowed for current role");
   }
   const requestedBy = resolveRequestedBy(request, parsed.data.requestedBy ?? null, session);

@@ -26,6 +26,40 @@ async function syncIdrSequenceFromInstruments() {
   });
 }
 
+async function ensureCommittees() {
+  const codes = ["C#01", "C#02", "C#03", "C#04", "C#05"];
+  for (const code of codes) {
+    await prisma.committee.upsert({
+      where: { code },
+      create: { code, name: `Comité ${code}` },
+      update: {},
+    });
+  }
+  console.log("Committees C#01–C#05 ensured.");
+}
+
+/** Active membership for committee participant (authorityInstrumentId optional until nomination instrument exists). */
+async function ensureActiveMembership(userEmail: string, committeeCode: string) {
+  const user = await prisma.user.findUnique({ where: { email: userEmail } });
+  const committee = await prisma.committee.findUnique({ where: { code: committeeCode } });
+  if (!user || !committee) return;
+  const existing = await prisma.committeeMembership.findFirst({
+    where: { userId: user.id, committeeId: committee.id, status: "active" },
+  });
+  if (existing) {
+    console.log(`Committee membership exists: ${userEmail} -> ${committeeCode}`);
+    return;
+  }
+  await prisma.committeeMembership.create({
+    data: {
+      userId: user.id,
+      committeeId: committee.id,
+      status: "active",
+    },
+  });
+  console.log(`Committee membership created: ${userEmail} -> ${committeeCode}`);
+}
+
 async function ensureUser(input: {
   email: string;
   passwordPlain: string;
@@ -58,14 +92,38 @@ async function ensureInstrument(spec: {
   content: string;
   draftingAuthority?: string | null;
   parentInstrumentId?: string | null;
+  /** Comité responsável (código estável, ex. C#01). */
+  committeeCode?: string | null;
 }) {
+  let committeeId: string | null = null;
+  if (spec.committeeCode) {
+    const c = await prisma.committee.findUnique({ where: { code: spec.committeeCode } });
+    committeeId = c?.id ?? null;
+    if (!committeeId) {
+      console.warn(`Committee not found for code ${spec.committeeCode}; instrument sem comité.`);
+    }
+  }
+
   const existing = await prisma.instrument.findUnique({ where: { idrRef: spec.idrRef } });
   if (existing) {
     console.log(`Instrument exists, skip: ${spec.idrRef}`);
-    if (spec.parentInstrumentId !== undefined && existing.parentInstrumentId !== (spec.parentInstrumentId ?? null)) {
+    const updates: {
+      parentInstrumentId?: string | null;
+      committeeId?: string | null;
+    } = {};
+    if (
+      spec.parentInstrumentId !== undefined &&
+      existing.parentInstrumentId !== (spec.parentInstrumentId ?? null)
+    ) {
+      updates.parentInstrumentId = spec.parentInstrumentId ?? null;
+    }
+    if (committeeId !== null && existing.committeeId !== committeeId) {
+      updates.committeeId = committeeId;
+    }
+    if (Object.keys(updates).length > 0) {
       return prisma.instrument.update({
         where: { id: existing.id },
-        data: { parentInstrumentId: spec.parentInstrumentId ?? null },
+        data: updates,
       });
     }
     return existing;
@@ -81,6 +139,7 @@ async function ensureInstrument(spec: {
         draftingAuthority: spec.draftingAuthority ?? null,
         currentVersion: 1,
         parentInstrumentId: spec.parentInstrumentId ?? null,
+        committeeId,
       },
     });
     const v1 = await tx.instrumentVersion.create({
@@ -123,14 +182,21 @@ async function main() {
   await ensureUser({
     email: "reviewer@hub-preop.local",
     passwordPlain: reviewerPass,
-    name: "Reviewer",
-    roles: ["reviewer"],
+    name: "Participante comité (seed)",
+    roles: [],
   });
   await ensureUser({
     email: "viewer@hub-preop.local",
     passwordPlain: viewerPass,
     name: "Public viewer",
     roles: ["viewer_public"],
+  });
+
+  await ensureCommittees();
+  await ensureActiveMembership("reviewer@hub-preop.local", "C#01");
+  await prisma.user.updateMany({
+    where: { email: "reviewer@hub-preop.local" },
+    data: { roles: [] },
   });
 
   if (skipInstruments) {
@@ -160,6 +226,19 @@ async function main() {
         "Founding placeholder referencing the **Document Hub (Tech Specs)**. Use the normalization queue " +
         "to resolve this item (in-force, under-review for GA, or revoked).\n\n" +
         "Link-style summary only in MVP; operational proof over full publication.",
+    });
+
+    await ensureInstrument({
+      idrRef: "idr:HUB-INSTR-00009003",
+      title: "Instrumento exemplo — espaço do comité C#01 (rascunho)",
+      layer: 2,
+      status: "draft",
+      draftingAuthority: "committee-placeholder",
+      parentInstrumentId: framework.id,
+      committeeCode: "C#01",
+      content:
+        "Texto de exemplo para o ateliê normativo do comité. Substituir pela minuta real.\n\n" +
+        "Este instrumento permanece em **modo elaboração** até à abertura formal de consulta pública.",
     });
   }
 

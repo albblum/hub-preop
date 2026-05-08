@@ -9,6 +9,9 @@ const multipartSegmentSchema = z.object({
 export const createInstrumentBodySchema = z
   .object({
     title: z.string().min(1).max(500),
+    documentType: z
+      .enum(["constitutional", "operational", "institutional", "generic"])
+      .optional(),
     layer: z.number().int().min(0).max(5),
     draftingAuthority: z.string().max(200).optional().nullable(),
     content: z.string().max(100_000).optional().nullable(),

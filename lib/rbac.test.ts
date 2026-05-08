@@ -46,9 +46,36 @@ describe("rbac mutations", () => {
     expect(canViewOperationalQueues(["reviewer"])).toBe(true);
   });
 
+  it("active committee membership grants transition and ops queues without HubRole reviewer", () => {
+    const claims = [
+      {
+        committeeId: "c1",
+        code: "C#01",
+        startedAt: new Date().toISOString(),
+      },
+    ];
+    expect(canTransition([], claims)).toBe(true);
+    expect(canViewOperationalQueues([], claims)).toBe(true);
+    expect(canUseExportMode([], "registered", claims)).toBe(true);
+    expect(canUseExportMode([], "restricted", claims)).toBe(false);
+  });
+
   it("registrar may create and transition", () => {
     expect(canCreateInstrument(["registrar"])).toBe(true);
     expect(canAppendContent(["registrar"])).toBe(true);
     expect(canTransition(["registrar"])).toBe(true);
+  });
+
+  it("committee member may append content only for instruments of their committee", () => {
+    const claims = [
+      {
+        committeeId: "c-com-1",
+        code: "C#01",
+        startedAt: new Date().toISOString(),
+      },
+    ];
+    expect(canAppendContent([], claims, "c-com-1")).toBe(true);
+    expect(canAppendContent([], claims, "other-committee")).toBe(false);
+    expect(canAppendContent([], claims, null)).toBe(false);
   });
 });

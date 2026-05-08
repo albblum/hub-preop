@@ -229,6 +229,7 @@ export async function allocateIdrRef(): Promise<string> {
 
 export type CreateInstrumentInput = {
   title: string;
+  documentType?: "constitutional" | "operational" | "institutional" | "generic";
   layer: number;
   draftingAuthority?: string | null;
   content?: string | null;
@@ -236,7 +237,7 @@ export type CreateInstrumentInput = {
 };
 
 export async function createInstrument(input: CreateInstrumentInput): Promise<Instrument> {
-  const { title, layer, draftingAuthority, content, parentInstrumentId } = input;
+  const { title, documentType, layer, draftingAuthority, content, parentInstrumentId } = input;
 
   let parent: Instrument | null = null;
   if (parentInstrumentId) {
@@ -263,6 +264,7 @@ export async function createInstrument(input: CreateInstrumentInput): Promise<In
       data: {
         idrRef,
         title,
+        documentType: documentType ?? "generic",
         layer,
         status: INITIAL_STATUS,
         draftingAuthority: draftingAuthority ?? null,
@@ -315,6 +317,7 @@ export type MultipartSegmentInput = {
 
 export type CreateMultipartInstrumentInput = {
   title: string;
+  documentType?: "constitutional" | "operational" | "institutional" | "generic";
   layer: number;
   draftingAuthority?: string | null;
   parentInstrumentId?: string | null;
@@ -326,6 +329,7 @@ export async function createMultipartInstrument(
   input: CreateMultipartInstrumentInput,
 ): Promise<Instrument> {
   const { title, layer, draftingAuthority, parentInstrumentId, segments } = input;
+  const { documentType } = input;
 
   let parent: Instrument | null = null;
   if (parentInstrumentId) {
@@ -369,6 +373,7 @@ export async function createMultipartInstrument(
       data: {
         idrRef,
         title,
+        documentType: documentType ?? "generic",
         layer,
         status: INITIAL_STATUS,
         draftingAuthority: draftingAuthority ?? null,
@@ -599,12 +604,21 @@ export async function listInstruments(options?: {
   status?: string;
   /** Layer filter (DocHUB SS 9 list instruments); omni when omitted. */
   layer?: number;
+  /** Restrict to instruments owned by these committees (workspace). */
+  committeeIds?: string[];
+  /** Only rows with a comité assignado (espaço de trabalho). Ignored when `committeeIds` is non-empty. */
+  onlyCommitteeAssigned?: boolean;
 }) {
   const skip = options?.skip ?? 0;
   const take = Math.min(options?.take ?? 50, 100);
-  const where: { status?: string; layer?: number } = {};
+  const where: Prisma.InstrumentWhereInput = {};
   if (options?.status) where.status = options.status;
   if (options?.layer !== undefined) where.layer = options.layer;
+  if (options?.committeeIds && options.committeeIds.length > 0) {
+    where.committeeId = { in: options.committeeIds };
+  } else if (options?.onlyCommitteeAssigned) {
+    where.committeeId = { not: null };
+  }
   const [items, total] = await prisma.$transaction([
     prisma.instrument.findMany({
       where,
@@ -620,7 +634,11 @@ export async function listInstruments(options?: {
         draftingAuthority: true,
         currentVersion: true,
         parentInstrumentId: true,
+        committeeId: true,
+        consultationClosesAt: true,
+        consultationOpeningNote: true,
         parent: { select: { idrRef: true } },
+        committee: { select: { id: true, code: true } },
         createdAt: true,
         updatedAt: true,
       },
@@ -701,6 +719,7 @@ export async function transitionInstrument(input: TransitionInput): Promise<Inst
     select: {
       id: true,
       idrRef: true,
+      documentType: true,
       status: true,
       layer: true,
       parentInstrumentId: true,
@@ -722,6 +741,7 @@ export async function transitionInstrument(input: TransitionInput): Promise<Inst
     requestedTo: input.toStatus,
     layer: current.layer,
     parent: parentForPolicy,
+    documentType: current.documentType,
   });
 
   const toStatus = resolved.toStatus;
@@ -1076,6 +1096,7 @@ export async function getAsOfByVersionNumber(
     select: {
       id: true,
       idrRef: true,
+        documentType: true,
       title: true,
       layer: true,
       parentInstrumentId: true,
@@ -1126,6 +1147,7 @@ export async function getAsOfByTimestamp(
     select: {
       id: true,
       idrRef: true,
+        documentType: true,
       title: true,
       layer: true,
       parentInstrumentId: true,

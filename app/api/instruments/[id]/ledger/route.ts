@@ -8,7 +8,9 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, context: RouteContext) {
   const session = await auth();
-  if (!canViewOperationalQueues(session?.user?.roles)) {
+  if (
+    !canViewOperationalQueues(session?.user?.roles, session?.user?.committeeMemberships ?? [])
+  ) {
     return jsonForbidden("Ledger requires registrar, reviewer, or admin session");
   }
 

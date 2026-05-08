@@ -14,7 +14,7 @@ export default async function NormalizationPage() {
   if (!session?.user) {
     redirect("/login?callbackUrl=/normalization");
   }
-  if (!canViewOperationalQueues(session.user.roles)) {
+  if (!canViewOperationalQueues(session.user.roles, session.user.committeeMemberships)) {
     redirect("/");
   }
 

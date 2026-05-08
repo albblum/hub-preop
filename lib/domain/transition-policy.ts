@@ -1,4 +1,9 @@
-import { assertTransitionAllowed, DomainError, isTransitionAllowed } from "./transitions";
+import {
+  assertTransitionAllowed,
+  DomainError,
+  isTransitionAllowed,
+  type TransitionMatrixProfile,
+} from "./transitions";
 import { isParentDerivationValid } from "./derivation";
 
 const DERIVATION_GATE_STATUSES = new Set(["in-force", "foundational-provisional"]);
@@ -7,6 +12,15 @@ export type ResolveTransitionResult = {
   toStatus: string;
   note?: string;
 };
+
+function documentTypeToProfile(
+  documentType: string | null | undefined,
+): TransitionMatrixProfile {
+  if (documentType === "constitutional") return "constitutional";
+  if (documentType === "operational") return "operational";
+  if (documentType === "institutional") return "institutional";
+  return "generic";
+}
 
 /**
  * Applies derivation gate: for layer > 0, attempts to enter in-force or foundational-provisional
@@ -18,8 +32,10 @@ export function resolveTransitionTarget(input: {
   requestedTo: string;
   layer: number;
   parent: { layer: number } | null;
+  documentType?: string | null;
 }): ResolveTransitionResult {
-  const { fromStatus, requestedTo, layer, parent } = input;
+  const { fromStatus, requestedTo, layer, parent, documentType } = input;
+  const profile = documentTypeToProfile(documentType);
   const parentOk = isParentDerivationValid(layer, parent);
 
   if (
@@ -27,7 +43,7 @@ export function resolveTransitionTarget(input: {
     !parentOk &&
     DERIVATION_GATE_STATUSES.has(requestedTo)
   ) {
-    if (!isTransitionAllowed(fromStatus, "derivation-pending")) {
+    if (!isTransitionAllowed(fromStatus, "derivation-pending", profile)) {
       throw new DomainError(
         "Cannot enter foundational-provisional or in-force without valid superior-layer derivation. Link parentInstrumentId (parent.layer < child.layer), or move through statuses allowed by the transition matrix (e.g. draft → under-review first).",
       );
@@ -39,6 +55,6 @@ export function resolveTransitionTarget(input: {
     };
   }
 
-  assertTransitionAllowed(fromStatus, requestedTo);
+  assertTransitionAllowed(fromStatus, requestedTo, profile);
   return { toStatus: requestedTo };
 }

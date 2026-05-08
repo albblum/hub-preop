@@ -13,7 +13,7 @@ export default async function ReviewInstrumentPage({ params }: PageProps) {
   if (!session?.user) {
     redirect(`/login?callbackUrl=${encodeURIComponent("/review")}`);
   }
-  if (!canViewOperationalQueues(session.user.roles)) {
+  if (!canViewOperationalQueues(session.user.roles, session.user.committeeMemberships)) {
     redirect("/");
   }
 

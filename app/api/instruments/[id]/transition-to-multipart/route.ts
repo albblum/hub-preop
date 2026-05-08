@@ -8,6 +8,7 @@ import { handleDomainError, handleIntegrityError } from "@/lib/api-instrument";
 import { transitionToMultipartBodySchema } from "@/lib/validation/instrument";
 import { canAppendContent } from "@/lib/rbac";
 import { jsonForbidden, jsonUnauthorized } from "@/lib/api-http";
+import { prisma } from "@/lib/prisma";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -16,7 +17,20 @@ export async function POST(request: Request, context: RouteContext) {
   if (!session?.user) {
     return jsonUnauthorized();
   }
-  if (!canAppendContent(session.user.roles)) {
+
+  const { id } = await context.params;
+
+  const inst = await prisma.instrument.findUnique({
+    where: { id },
+    select: { committeeId: true },
+  });
+  if (
+    !canAppendContent(
+      session.user.roles,
+      session.user.committeeMemberships,
+      inst?.committeeId ?? null,
+    )
+  ) {
     return jsonForbidden("Insufficient role to transition instrument profile");
   }
   if (!isMonolithToMultipartTransitionEnabled()) {
@@ -28,8 +42,6 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 403 },
     );
   }
-
-  const { id } = await context.params;
 
   let body: unknown;
   try {

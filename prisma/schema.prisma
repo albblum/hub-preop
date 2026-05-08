@@ -18,6 +18,8 @@ model Instrument {
   id                   String   @id @default(cuid())
   idrRef               String   @unique
   title                String
+  /// Document class for future flow/enforcement profiles; MVP keeps common behavior.
+  documentType         DocumentType @default(generic)
   layer                Int
   status               String
   draftingAuthority    String?
@@ -32,11 +34,102 @@ model Instrument {
   ledgerEntries        LedgerEntry[]
   parts                Part[]
   compositionEntries   CompositionEntry[]
+  committeeMembershipsAsAuthority CommitteeMembership[] @relation("CommitteeMembershipAuthority")
+  /// Comité responsável pela elaboração (espaço de trabalho do comité).
+  committeeId          String?
+  committee            Committee? @relation(fields: [committeeId], references: [id], onDelete: SetNull)
+  /// Consulta pública: prazo e nota de abertura (modo processo).
+  consultationClosesAt DateTime?
+  consultationOpeningNote String? @db.Text
+  externalReferenceLinks InstrumentExternalReference[]
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
   @@index([layer])
   @@index([status])
+  @@index([committeeId])
+}
+
+/// Standing committee (C#01–C#05). Identity for committee workspace and membership.
+model Committee {
+  id        String   @id @default(cuid())
+  /// Stable label e.g. C#01 … C#05
+  code      String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships CommitteeMembership[]
+  instruments Instrument[]
+}
+
+/// Referência externa partilhada entre comités (fundamentos, leis, pareceres).
+model ExternalReference {
+  id         String   @id @default(cuid())
+  kind       ExternalReferenceKind
+  title      String
+  origin     String
+  /// DOI, número de lei, URL estável, etc.
+  stableId   String
+  accessedAt DateTime
+  status     ExternalReferenceLifecycleStatus?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  instruments InstrumentExternalReference[]
+
+  @@index([kind])
+  @@index([stableId])
+}
+
+enum ExternalReferenceKind {
+  normative
+  technical
+  legal
+  economic
+}
+
+enum ExternalReferenceLifecycleStatus {
+  active
+  outdated
+  revoked
+}
+
+model InstrumentExternalReference {
+  instrumentId        String
+  instrument          Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  externalReferenceId String
+  externalReference   ExternalReference @relation(fields: [externalReferenceId], references: [id], onDelete: Cascade)
+  linkedAt            DateTime @default(now())
+
+  @@id([instrumentId, externalReferenceId])
+  @@index([externalReferenceId])
+}
+
+enum CommitteeMembershipStatus {
+  active
+  suspended
+  revoked
+}
+
+/// User participation in a committee. Authority may later reference a nomination instrument (authorityInstrumentId).
+model CommitteeMembership {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  committeeId String
+  committee Committee @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  status    CommitteeMembershipStatus @default(active)
+  /// Optional: instrument of appointment / nomination (authorityRef foundation).
+  authorityInstrumentId String?
+  authorityInstrument   Instrument? @relation("CommitteeMembershipAuthority", fields: [authorityInstrumentId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([committeeId, status])
 }
 
 /// Versioned content snapshot. Markdown string — human-readable, diff-friendly, matches Hub doc-oriented model.
@@ -181,12 +274,20 @@ enum HubRole {
   viewer_registered
 }
 
+enum DocumentType {
+  constitutional
+  operational
+  institutional
+  generic
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
   passwordHash String?
   name         String?
   roles        HubRole[]
+  committeeMemberships CommitteeMembership[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }

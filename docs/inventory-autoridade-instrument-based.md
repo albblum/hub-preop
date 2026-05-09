@@ -13,18 +13,21 @@ entregue (resolver central + migração das 4 rotas críticas + guarda PRC → S
 
 ## Estado atual verificado (ponto de partida)
 
-- Resolver central existente em `hub-preop/lib/authority/resolve-authority.ts`
-  com tipos em `hub-preop/lib/authority/types.ts` e fachada em
-  `hub-preop/lib/authority/index.ts`.
-- `AuthorityDecision` exporta hoje apenas:
-  `allowed`, `reasonCode`, `authoritySource` (`role_based` | `instrument_based` | `hybrid`),
-  `normativeRefs`. Não há `authorityEvidence` nem `resolutionMode`.
-- `decideTransition` decide por `canTransition(roles, memberships)` — `authoritySource`
-  fica fixo em `role_based` mesmo quando o ator também é membro de comité.
-- `decideCommitteeAction` exige `instrument.committeeId` e considera
-  `admin`/`registrar` como supervisores; promove `authoritySource` a `hybrid`
-  quando há *match* de membership e o ator não é supervisor — mas **não** consulta
-  `authorityInstrumentId` da membership e **não** valida `endedAt`.
+- Resolver central em `hub-preop/lib/authority/resolve-authority.ts`, tipos em
+  `hub-preop/lib/authority/types.ts`, sinais em
+  `hub-preop/lib/authority/instrument-membership.ts`, fachada em
+  `hub-preop/lib/authority/index.ts` (entregue na fase IBA, ex.: commit `0aca80a`).
+- `AuthorityDecision` inclui campos aditivos: `resolutionMode`
+  (`instrument_first` | `hybrid_fallback` | `role_fallback`) e
+  `authorityEvidence` (`committeeId`, `authorityInstrumentId` quando aplicável).
+- `decideTransition` usa `canTransition` + sinal `resolveActorAuthorityAny`: quando
+  só a membership concede a transição, o modo é `hybrid_fallback` (transição não
+  sobe a `instrument_first` por desenho IBA).
+- `decideCommitteeAction` usa `resolveActorAuthorityForCommittee`: com
+  `authorityInstrumentId` na membership → `instrument_first` / `instrument_based`;
+  membership sem nomeação → `hybrid_fallback` / `hybrid`; supervisor →
+  `role_fallback` / `role_based`. Validação de `endedAt` no claim de sessão segue
+  fora de escopo (claims só de memberships `active` no sign-in).
 - Rotas críticas que já consomem o resolver:
   - `hub-preop/app/api/instruments/[id]/transition/route.ts`
   - `hub-preop/app/api/committee/instruments/[id]/consultation/route.ts`

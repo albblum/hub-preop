@@ -11,7 +11,7 @@ const PRC_DELIBERATION_MARKER = "prc:deliberation_recorded";
 
 type AuthorityAuditSnapshot = Pick<
   AuthorityDecision,
-  "reasonCode" | "authoritySource" | "normativeRefs"
+  "reasonCode" | "authoritySource" | "normativeRefs" | "resolutionMode" | "authorityEvidence"
 >;
 
 /** Abertura formal de consulta pública: registo + transição rascunho → em análise. */
@@ -154,6 +154,7 @@ export async function committeeRecordDeliberation(input: {
           "Acto PRC — deliberação registada",
           PRC_DELIBERATION_MARKER,
           `authority_reason:${input.authorityDecision?.reasonCode ?? "unknown"}`,
+          `authority_mode:${input.authorityDecision?.resolutionMode ?? "unknown"}`,
         ]
           .filter(Boolean)
           .join(" | "),
@@ -256,6 +257,7 @@ export async function committeeFormalApproval(input: {
             "Aprovação formal do comité — fundamento normativo registado",
             `PRC confirmado: ${prcDeliberationEvent.id}`,
             `authority_reason:${input.authorityDecision?.reasonCode ?? "unknown"}`,
+            `authority_mode:${input.authorityDecision?.resolutionMode ?? "unknown"}`,
             input.foundationNote,
             gateNote,
           ]

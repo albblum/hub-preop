@@ -18,19 +18,16 @@ export async function POST(request: Request, context: RouteContext) {
   if (!session?.user) {
     return jsonUnauthorized();
   }
+  if (!canAppendContent(session.user.roles, session.user.committeeMemberships)) {
+    return jsonForbidden("Insufficient role to update content");
+  }
 
   const { docId } = await context.params;
   const detail = await resolveInstrumentDetail(docId);
   if (!detail) {
     return NextResponse.json({ error: "Instrument not found" }, { status: 404 });
   }
-  if (
-    !canAppendContent(
-      session.user.roles,
-      session.user.committeeMemberships,
-      detail.committeeId ?? null,
-    )
-  ) {
+  if (!canAppendContent(session.user.roles, session.user.committeeMemberships, detail.committeeId ?? null)) {
     return jsonForbidden("Insufficient role to update content");
   }
 

@@ -5,6 +5,14 @@ import { resolveTransitionTarget } from "@/lib/domain/transition-policy";
 import { mapInstrumentStatusToPartStatus } from "@/lib/domain/part-status";
 import { appendCommitteeProcessLedger, appendTransitionLedger } from "@/lib/ledger/append-ledger";
 import { getInstrumentById } from "@/lib/instrument-service";
+import type { AuthorityDecision } from "@/lib/authority";
+
+const PRC_DELIBERATION_MARKER = "prc:deliberation_recorded";
+
+type AuthorityAuditSnapshot = Pick<
+  AuthorityDecision,
+  "reasonCode" | "authoritySource" | "normativeRefs"
+>;
 
 /** Abertura formal de consulta pública: registo + transição rascunho → em análise. */
 export async function committeeOpenConsultation(input: {
@@ -14,6 +22,7 @@ export async function committeeOpenConsultation(input: {
   actorKind: ActorKind;
   actorLabel: string | null;
   actorExternalId: string | null;
+  authorityDecision?: AuthorityAuditSnapshot;
 }): Promise<void> {
   const inst = await prisma.instrument.findUnique({
     where: { id: input.instrumentId },
@@ -60,6 +69,7 @@ export async function committeeOpenConsultation(input: {
       body: {
         closesAt: input.closesAt.toISOString(),
         openingNote: input.openingNote,
+        authorityDecision: input.authorityDecision ?? null,
       },
     });
 
@@ -105,6 +115,7 @@ export async function committeeRecordDeliberation(input: {
   actorKind: ActorKind;
   actorLabel: string | null;
   actorExternalId: string | null;
+  authorityDecision?: AuthorityAuditSnapshot;
 }): Promise<void> {
   const inst = await prisma.instrument.findUnique({
     where: { id: input.instrumentId },
@@ -126,6 +137,26 @@ export async function committeeRecordDeliberation(input: {
         contributionRefs: input.contributionRefs,
         actorLabel: input.actorLabel,
         actorExternalId: input.actorExternalId,
+        authorityDecision: input.authorityDecision ?? null,
+      },
+    });
+
+    await tx.transitionEvent.create({
+      data: {
+        instrumentId: inst.id,
+        fromStatus: inst.status,
+        toStatus: inst.status,
+        actor: input.actorLabel,
+        actorKind: input.actorKind,
+        actorLabel: input.actorLabel,
+        actorExternalId: input.actorExternalId,
+        note: [
+          "Acto PRC — deliberação registada",
+          PRC_DELIBERATION_MARKER,
+          `authority_reason:${input.authorityDecision?.reasonCode ?? "unknown"}`,
+        ]
+          .filter(Boolean)
+          .join(" | "),
       },
     });
   });
@@ -138,6 +169,7 @@ export async function committeeFormalApproval(input: {
   actorKind: ActorKind;
   actorLabel: string | null;
   actorExternalId: string | null;
+  authorityDecision?: AuthorityAuditSnapshot;
 }) {
   const instrumentId = input.instrumentId;
 
@@ -158,6 +190,22 @@ export async function committeeFormalApproval(input: {
   if (current.status !== "under-review") {
     throw new DomainError(
       "A aprovação formal aplica-se quando o instrumento está em análise (após consulta).",
+    );
+  }
+  const prcDeliberationEvent = await prisma.transitionEvent.findFirst({
+    where: {
+      instrumentId: current.id,
+      fromStatus: "under-review",
+      toStatus: "under-review",
+      note: { contains: PRC_DELIBERATION_MARKER },
+    },
+    orderBy: { at: "desc" },
+    select: { id: true, at: true },
+  });
+  if (!prcDeliberationEvent) {
+    throw new DomainError(
+      "A aprovação SG depende de acto PRC prévio registado para este instrumento.",
+      "PRC_ACT_REQUIRED",
     );
   }
 
@@ -185,6 +233,12 @@ export async function committeeFormalApproval(input: {
       body: {
         foundationNote: input.foundationNote,
         quorumNote: "MVP: quórum confirmado pelo participante que executa o acto.",
+        authorityDecision: input.authorityDecision ?? null,
+        confirmedPriorAct: {
+          kind: "prc_deliberation",
+          eventId: prcDeliberationEvent.id,
+          at: prcDeliberationEvent.at.toISOString(),
+        },
       },
     });
 
@@ -200,6 +254,8 @@ export async function committeeFormalApproval(input: {
         note:
           [
             "Aprovação formal do comité — fundamento normativo registado",
+            `PRC confirmado: ${prcDeliberationEvent.id}`,
+            `authority_reason:${input.authorityDecision?.reasonCode ?? "unknown"}`,
             input.foundationNote,
             gateNote,
           ]

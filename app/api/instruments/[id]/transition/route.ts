@@ -4,8 +4,8 @@ import { resolveActorFromRequest } from "@/lib/actor-from-request";
 import { transitionInstrument } from "@/lib/instrument-service";
 import { handleDomainError } from "@/lib/api-instrument";
 import { transitionBodySchema } from "@/lib/validation/instrument";
-import { canTransition } from "@/lib/rbac";
 import { jsonForbidden, jsonUnauthorized } from "@/lib/api-http";
+import { resolveAuthorityForAction } from "@/lib/authority";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -14,11 +14,20 @@ export async function POST(request: Request, context: RouteContext) {
   if (!session?.user) {
     return jsonUnauthorized();
   }
-  if (!canTransition(session.user.roles, session.user.committeeMemberships)) {
+  const { id } = await context.params;
+  const authorityDecision = resolveAuthorityForAction({
+    actor: {
+      id: session.user.id,
+      roles: session.user.roles ?? [],
+      memberships: session.user.committeeMemberships ?? [],
+    },
+    instrument: { id },
+    actionType: "transition",
+    timestamp: new Date(),
+  });
+  if (!authorityDecision.allowed) {
     return jsonForbidden("Insufficient role for transitions");
   }
-
-  const { id } = await context.params;
 
   let body: unknown;
   try {

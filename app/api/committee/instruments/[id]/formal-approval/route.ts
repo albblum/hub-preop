@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireComiteWorkspace } from "@/lib/committee-api-session";
-import { mayAccessCommitteeInstrument } from "@/lib/committee-access";
 import { committeeFormalApproval } from "@/lib/committee-acts";
 import { resolveActorFromRequest } from "@/lib/actor-from-request";
 import { formalApprovalBodySchema } from "@/lib/validation/committee";
 import { handleDomainError, handleIntegrityError } from "@/lib/api-instrument";
 import { prisma } from "@/lib/prisma";
+import { resolveAuthorityForAction } from "@/lib/authority";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -23,8 +23,21 @@ export async function POST(request: Request, context: RouteContext) {
   if (!head) {
     return NextResponse.json({ error: "Instrumento não encontrado." }, { status: 404 });
   }
-  if (!mayAccessCommitteeInstrument(gate.sessionLike, head.committeeId)) {
-    return NextResponse.json({ error: "Sem acesso a este instrumento." }, { status: 403 });
+  const authorityDecision = resolveAuthorityForAction({
+    actor: {
+      id: gate.session.user.id,
+      roles: gate.session.user.roles ?? [],
+      memberships: gate.session.user.committeeMemberships ?? [],
+    },
+    instrument: { id, committeeId: head.committeeId },
+    actionType: "committee_formal_approval",
+    timestamp: new Date(),
+  });
+  if (!authorityDecision.allowed) {
+    return NextResponse.json(
+      { error: "Sem acesso a este instrumento.", reasonCode: authorityDecision.reasonCode },
+      { status: 403 },
+    );
   }
 
   let body: unknown;
@@ -51,6 +64,7 @@ export async function POST(request: Request, context: RouteContext) {
       actorKind: actor.actorKind,
       actorLabel: actor.actorLabel,
       actorExternalId: actor.actorExternalId,
+      authorityDecision,
     });
     return NextResponse.json(updated);
   } catch (e) {

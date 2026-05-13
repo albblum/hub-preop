@@ -2,6 +2,8 @@
 
 Next.js (App Router) + PostgreSQL + Prisma. Instrument **stubs** only; Core Registry / `idr:ref` / full state machine are **out of scope** until Phase 3.
 
+**Related repo:** public landing (v0) lives in a separate GitHub project — [albblum/v0-idr-landing-page](https://github.com/albblum/v0-idr-landing-page). See [docs/ECOSYSTEM-REPOS.md](./docs/ECOSYSTEM-REPOS.md) for the full ecosystem map.
+
 ## Quick start
 
 1. Copy `.env.example` to `.env` and set `DATABASE_URL`.

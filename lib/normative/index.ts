@@ -31,6 +31,14 @@ export { appendClauseVersion, getCurrentClauseVersion } from "./clause-version";
 export type { AppendClauseVersionInput } from "./clause-version";
 
 export {
+  appendClauseVersionAndReaggregate,
+} from "./append-clause-and-reaggregate";
+export type {
+  AppendClauseAndReaggregateInput,
+  AppendClauseAndReaggregateResult,
+} from "./append-clause-and-reaggregate";
+
+export {
   assertClauseNotPublished,
   assertClauseVersionNotReferenced,
   assertSectionStructureMutable,

@@ -31,6 +31,7 @@ import {
   aggregateInstrumentReadFallback,
   isDerivedHead,
 } from "@/lib/normative/aggregate-instrument";
+import { assertV1WritePath } from "@/lib/domain/v2-write-guards";
 
 const INITIAL_STATUS = "draft";
 
@@ -127,6 +128,15 @@ export async function transitionMonolithToMultipartProfile(input: {
 }): Promise<InstrumentDetail | TransitionMonolithToMultipartDryRunResult> {
   const { instrumentId, dryRun } = input;
 
+  const profileRow = await prisma.instrument.findUnique({
+    where: { id: instrumentId },
+    select: { structuralProfile: true },
+  });
+  if (!profileRow) {
+    throw new DomainError("Instrument not found", "INSTRUMENT_NOT_FOUND");
+  }
+  assertV1WritePath(profileRow.structuralProfile, "transitionMonolithToMultipart");
+
   const ctx = await loadMonolithTransitionContext(prisma, instrumentId);
 
   if (dryRun) {
@@ -210,6 +220,7 @@ function formatIdrRef(seq: number): string {
   return `idr:HUB-INSTR-${String(seq).padStart(8, "0")}`;
 }
 
+/** Legacy v1 instrument creation only — never call for structuralProfile v2. */
 export async function allocateIdrRef(): Promise<string> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`
@@ -843,7 +854,13 @@ export async function appendInstrumentVersion(
     include: { currentVersionRecord: true },
   });
 
-  if (!inst?.currentVersionRecord) {
+  if (!inst) {
+    throw new DomainError("Instrument not found or has no current version");
+  }
+
+  assertV1WritePath(inst.structuralProfile, "appendInstrumentVersion");
+
+  if (!inst.currentVersionRecord) {
     throw new DomainError("Instrument not found or has no current version");
   }
 
@@ -917,7 +934,13 @@ export async function appendMultipartInstrumentVersion(
     include: { currentVersionRecord: true },
   });
 
-  if (!inst?.currentVersionRecord) {
+  if (!inst) {
+    throw new DomainError("Instrument not found or has no current version");
+  }
+
+  assertV1WritePath(inst.structuralProfile, "appendMultipartInstrumentVersion");
+
+  if (!inst.currentVersionRecord) {
     throw new DomainError("Instrument not found or has no current version");
   }
 

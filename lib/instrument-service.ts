@@ -27,6 +27,10 @@ import {
   validateMultipartSegmentPositions,
 } from "@/lib/part-composition";
 import { mapInstrumentStatusToPartStatus } from "@/lib/domain/part-status";
+import {
+  aggregateInstrumentReadFallback,
+  isDerivedHead,
+} from "@/lib/normative/aggregate-instrument";
 
 const INITIAL_STATUS = "draft";
 
@@ -482,10 +486,13 @@ async function getMultipartSegmentsForCurrentVersion(
   }));
 }
 
-async function attachCompositionDetailFields(row: {
-  id: string;
-  currentVersionRecord: InstrumentVersion | null;
-}): Promise<{
+async function attachCompositionDetailFields(
+  row: {
+    id: string;
+    structuralProfile: Instrument["structuralProfile"];
+    currentVersionRecord: InstrumentVersion | null;
+  },
+): Promise<{
   parts: { id: string; partKind: string; partStatus: string }[];
   compositionProfile: "monolith" | "multipart";
   multipartSegments?: Array<{
@@ -495,6 +502,9 @@ async function attachCompositionDetailFields(row: {
     markdownBody: string;
   }>;
 }> {
+  if (row.structuralProfile === "v2") {
+    return { parts: [], compositionProfile: "monolith" };
+  }
   const parts = await getPartsOrderedByComposition(row.id);
   const isMono = await isMonolithCompositionProfile(prisma, row.id);
   const compositionProfile = isMono ? "monolith" : "multipart";
@@ -540,7 +550,38 @@ export type InstrumentDetail = Instrument & {
     partKind: string;
     markdownBody: string;
   }>;
+  /** Set when DocHUB resolves a clause-level idrRef (v2). */
+  resolvedClause?: { idrRef: string; body: string; nonNormative?: boolean };
 };
+
+async function ensureV2DerivedHead(
+  row: Instrument & { currentVersionRecord: InstrumentVersion | null },
+): Promise<InstrumentVersion | null> {
+  if (row.structuralProfile !== "v2") {
+    return row.currentVersionRecord;
+  }
+  if (isDerivedHead(row.currentVersionRecord)) {
+    return row.currentVersionRecord;
+  }
+
+  console.warn(
+    `[instrument-service] v2 instrument ${row.idrRef} has no derived head; run scripts/aggregate-v2-instruments.ts — using on-read aggregate fallback`,
+  );
+  const fallback = await aggregateInstrumentReadFallback(row.id);
+  const versionNum = row.currentVersionRecord?.version ?? fallback.versionNum;
+  return {
+    id: row.currentVersionRecord?.id ?? `fallback-${row.id}`,
+    instrumentId: row.id,
+    version: versionNum,
+    content: fallback.content,
+    contentHash: fallback.contentHash,
+    previousContentHash: row.currentVersionRecord?.previousContentHash ?? null,
+    supersedesVersion: row.currentVersionRecord?.supersedesVersion ?? null,
+    revisionNote: row.currentVersionRecord?.revisionNote ?? null,
+    contentSourceKind: "derived",
+    createdAt: row.currentVersionRecord?.createdAt ?? new Date(0),
+  };
+}
 
 export async function getInstrumentById(id: string): Promise<InstrumentDetail | null> {
   const row = await prisma.instrument.findUnique({
@@ -566,8 +607,9 @@ export async function getInstrumentById(id: string): Promise<InstrumentDetail | 
     },
   });
   if (!row) return null;
+  const head = await ensureV2DerivedHead(row);
   const extra = await attachCompositionDetailFields(row);
-  return { ...row, ...extra };
+  return { ...row, currentVersionRecord: head, ...extra };
 }
 
 export async function getInstrumentByIdrRef(idrRef: string): Promise<InstrumentDetail | null> {
@@ -594,8 +636,9 @@ export async function getInstrumentByIdrRef(idrRef: string): Promise<InstrumentD
     },
   });
   if (!row) return null;
+  const head = await ensureV2DerivedHead(row);
   const extra = await attachCompositionDetailFields(row);
-  return { ...row, ...extra };
+  return { ...row, currentVersionRecord: head, ...extra };
 }
 
 export async function listInstruments(options?: {

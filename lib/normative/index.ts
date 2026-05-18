@@ -39,3 +39,33 @@ export {
 } from "./immutability";
 
 export type { NormativeTx } from "./types";
+
+export {
+  AGGREGATE_SEP,
+  AGGREGATE_SECTION_HEADER_PREFIX,
+  aggregateInstrument,
+  aggregateAndPersistInstrument,
+  aggregateInstrumentReadFallback,
+  buildAggregateMarkdown,
+  findInstrumentByIdOrIdrRef,
+  isDerivedHead,
+} from "./aggregate-instrument";
+export type {
+  AggregateInstrumentResult,
+  AggregateAndPersistOptions,
+  AggregateAndPersistResult,
+} from "./aggregate-instrument";
+
+export {
+  loadV2SectionsSummary,
+  loadV2TreeForAggregate,
+  findInstrumentIdForClause,
+  loadResolvedClause,
+} from "./read-v2-instrument";
+export type {
+  V2SectionSummary,
+  V2SectionAggregateNode,
+  V2ArticleAggregateNode,
+  V2ParagraphAggregateNode,
+  V2ClauseAggregateNode,
+} from "./read-v2-instrument";

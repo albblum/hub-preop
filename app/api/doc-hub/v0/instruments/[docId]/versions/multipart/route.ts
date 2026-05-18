@@ -52,7 +52,7 @@ export async function POST(request: Request, context: RouteContext) {
       bodiesByPartId: parsed.data.bodiesByPartId,
       revisionNote: parsed.data.revisionNote,
     });
-    return NextResponse.json(instrumentDetailToDocHubShape(updated));
+    return NextResponse.json(await instrumentDetailToDocHubShape(updated));
   } catch (e) {
     const ir = handleIntegrityError(e);
     if (ir) return ir;

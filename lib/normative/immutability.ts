@@ -25,7 +25,7 @@ export async function assertClauseNotPublished(tx: NormativeTx, clauseId: string
 
 /**
  * Fails when the version participates in an aggregated instrument revision.
- * TODO (Phase 4): also reject when referenced via `LedgerEntry.payloadHash` dependency on this version.
+ * `LedgerEntry.payloadHash` remains instrument-scoped (ADR 0002); clause-level ledger coupling is not modelled yet.
  */
 export async function assertClauseVersionNotReferenced(tx: NormativeTx, clauseVersionId: string): Promise<void> {
   const link = await tx.instrumentRevisionClauseVersion.findFirst({

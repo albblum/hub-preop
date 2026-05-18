@@ -10,5 +10,5 @@ export async function GET(_request: Request, context: RouteContext) {
   if (!detail) {
     return NextResponse.json({ error: "Instrument not found" }, { status: 404 });
   }
-  return NextResponse.json(instrumentDetailToDocHubShape(detail));
+  return NextResponse.json(await instrumentDetailToDocHubShape(detail));
 }

@@ -1,7 +1,7 @@
 ## Handoff — Passo 3 (Fase 3)
 
 - **Branch:** `feat/hub-preop-schema-v2-phase1`
-- **Commits:** `b8d279d` (scripts + domínio) · `1d08dc4` (parser + handoff pós-carga lab)
+- **Commits:** `b8d279d` (scripts + domínio) · `6962cb5` (parser + handoff pós-carga lab)
 - **Foundation:** `idr:c:foundation` — 9 secções (s0+s2 pilot, s1/s3–s8 `deferred`); **54 cláusulas**; registry documento + cláusulas
 - **Preop-regime:** `idr:c:preop-regime` — s0–s2; `terminationDate` 2026-12-31; `s2` `nonNormative=true`; **57 cláusulas**; `parentInstrumentId` → foundation
 - **Aliases HUB-INSTR:** **0** na carga lab (sem monólitos v1 com título igual ao `FILE_ORDER` do ingest)

@@ -1,9 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
   canAppendContent,
+  canClosePreopRegimeByFormalAct,
   canCreateInstrument,
+  canIssueInstitutionalAct,
+  canManageProvisionalMembers,
+  canParticipateInDeliberation,
+  canSubmitConsultationContribution,
   canTransition,
   canUseExportMode,
+  canViewInstitutionalCorpusDocument,
   canViewOperationalQueues,
   maxExportModeForRoles,
 } from "./rbac";
@@ -64,6 +70,44 @@ describe("rbac mutations", () => {
     expect(canCreateInstrument(["registrar"])).toBe(true);
     expect(canAppendContent(["registrar"])).toBe(true);
     expect(canTransition(["registrar"])).toBe(true);
+  });
+
+  it("secretary_general may issue institutional acts but not create instruments", () => {
+    expect(canIssueInstitutionalAct(["secretary_general"])).toBe(true);
+    expect(canManageProvisionalMembers(["secretary_general"])).toBe(true);
+    expect(canClosePreopRegimeByFormalAct(["secretary_general"])).toBe(true);
+    expect(canCreateInstrument(["secretary_general"])).toBe(false);
+    expect(canTransition(["secretary_general"])).toBe(true);
+    expect(
+      canAppendContent(["secretary_general"], [], null, { documentType: "institutional" }),
+    ).toBe(true);
+    expect(canAppendContent(["secretary_general"], [], null, { documentType: "operational" })).toBe(
+      false,
+    );
+    expect(canUseExportMode(["secretary_general"], "restricted")).toBe(true);
+  });
+
+  it("provisional_member may consult and deliberate without admin powers", () => {
+    expect(canCreateInstrument(["provisional_member"])).toBe(false);
+    expect(canTransition(["provisional_member"])).toBe(false);
+    expect(canSubmitConsultationContribution(["provisional_member"], "under-review")).toBe(true);
+    expect(canSubmitConsultationContribution(["provisional_member"], "draft")).toBe(false);
+    expect(canParticipateInDeliberation(["provisional_member"])).toBe(true);
+    expect(canViewOperationalQueues(["provisional_member"])).toBe(true);
+    expect(
+      canViewInstitutionalCorpusDocument(["provisional_member"], {
+        documentType: "constitutional",
+        status: "foundational-provisional",
+      }),
+    ).toBe(true);
+    expect(
+      canViewInstitutionalCorpusDocument(["provisional_member"], {
+        documentType: "institutional",
+        status: "draft",
+      }),
+    ).toBe(false);
+    expect(canUseExportMode(["provisional_member"], "registered")).toBe(true);
+    expect(canUseExportMode(["provisional_member"], "restricted")).toBe(false);
   });
 
   it("committee member may append content only for instruments of their committee", () => {

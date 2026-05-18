@@ -271,6 +271,10 @@ enum HubRole {
   reviewer
   viewer_public
   viewer_registered
+  /// Autoridade institucional de facto (pré-operacional); não é admin técnico.
+  secretary_general
+  /// Membro provisório durante o regime pré-operacional.
+  provisional_member
 }
 
 enum DocumentType {

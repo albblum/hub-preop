@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:no-db": "SKIP_DB=1 vitest run",
     "seed:founding": "tsx scripts/seed-founding.ts",
+    "seed:movement2": "tsx scripts/seed-movement2-provisional-actors.ts",
     "seed:users-only": "SEED_SKIP_INSTRUMENTS=1 tsx scripts/seed-founding.ts",
     "ingest:lote01": "tsx scripts/ingest-lote01.ts",
     "ingest:constitucional": "tsx scripts/ingest-base-constitucional.ts",

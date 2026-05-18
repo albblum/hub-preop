@@ -2,6 +2,7 @@ import type { Instrument, InstrumentVersion, Prisma, TransitionEvent } from "@pr
 import { LEDGER_ENTRY_TYPES } from "./entry-types";
 import { computeTransitionPayloadHash } from "./transition-payload-hash";
 import { computeCommitteeProcessPayloadHash } from "./process-payload-hash";
+import { computeInstrumentRegistrationPayloadHash } from "./registration-payload-hash";
 
 type Tx = Prisma.TransactionClient;
 
@@ -90,6 +91,38 @@ export async function appendCommitteeProcessLedger(
       entryType: LEDGER_ENTRY_TYPES.COMMITTEE_PROCESS_RECORD,
       payloadHash,
       idrRef: params.instrument.idrRef,
+    },
+  });
+}
+
+export async function appendInstrumentRegisteredLedger(
+  tx: Tx,
+  params: {
+    instrument: Pick<Instrument, "id" | "idrRef">;
+    version: Pick<InstrumentVersion, "id" | "contentHash">;
+    note: string;
+    registeredAt?: Date;
+  },
+): Promise<void> {
+  const registeredAt = params.registeredAt ?? new Date();
+  const { seq, previousId } = await nextSequence(tx, params.instrument.id);
+  const payloadHash = computeInstrumentRegistrationPayloadHash({
+    instrumentId: params.instrument.id,
+    idrRef: params.instrument.idrRef,
+    instrumentVersionId: params.version.id,
+    note: params.note,
+    registeredAtIso: registeredAt.toISOString(),
+  });
+  await tx.ledgerEntry.create({
+    data: {
+      instrumentId: params.instrument.id,
+      sequence: seq,
+      previousEntryId: previousId,
+      entryType: LEDGER_ENTRY_TYPES.INSTRUMENT_REGISTERED,
+      payloadHash,
+      idrRef: params.instrument.idrRef,
+      instrumentVersionId: params.version.id,
+      createdAt: registeredAt,
     },
   });
 }

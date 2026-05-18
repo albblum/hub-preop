@@ -12,10 +12,11 @@ export function userCommitteeIds(session: SessionLike): string[] {
   return session.user.committeeMemberships.map((m) => m.committeeId);
 }
 
-/** Admin/registrar podem supervisionar; participantes com filiação activa acedem ao espaço. */
+/** Admin/registrar/SG supervisionam; membros provisórios e filiação activa acedem ao espaço. */
 export function mayAccessComiteWorkspace(session: SessionLike): boolean {
   const roles = session.user.roles;
   if (roles.includes("admin") || roles.includes("registrar")) return true;
+  if (roles.includes("secretary_general") || roles.includes("provisional_member")) return true;
   return userCommitteeIds(session).length > 0;
 }
 
@@ -26,5 +27,7 @@ export function mayAccessCommitteeInstrument(
   if (!instrumentCommitteeId) return false;
   const roles = session.user.roles;
   if (roles.includes("admin") || roles.includes("registrar")) return true;
+  if (roles.includes("secretary_general")) return true;
+  if (roles.includes("provisional_member")) return true;
   return userCommitteeIds(session).includes(instrumentCommitteeId);
 }

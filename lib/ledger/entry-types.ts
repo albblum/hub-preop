@@ -6,6 +6,8 @@ export const LEDGER_ENTRY_TYPES = {
   STATUS_TRANSITION: "STATUS_TRANSITION",
   /** Comité — acto formal registado (consulta, deliberação, aprovação); payloadHash = hash canónico do corpo. */
   COMMITTEE_PROCESS_RECORD: "COMMITTEE_PROCESS_RECORD",
+  /** Registo fundacional de instrumento institucional (ato monolítico v1). */
+  INSTRUMENT_REGISTERED: "INSTRUMENT_REGISTERED",
 } as const;
 
 export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[keyof typeof LEDGER_ENTRY_TYPES];

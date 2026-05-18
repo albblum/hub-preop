@@ -8,52 +8,67 @@ datasource db {
 }
 
 /// Single-row counter for institutional idr:ref allocation (Phase 3 Core Registry).
+/// v2: não usado para novos instrumentos com structuralProfile = v2.
 model IdrSequence {
-  key String @id @default("instrument")
-  next Int   @default(0)
+  key  String @id @default("instrument")
+  next Int    @default(0)
 }
 
 /// Logical instrument head: stable idr:ref, layer, lifecycle status, derivation link.
 model Instrument {
-  id                   String   @id @default(cuid())
-  idrRef               String   @unique
-  title                String
-  /// Document class for future flow/enforcement profiles; MVP keeps common behavior.
-  documentType         DocumentType @default(generic)
-  layer                Int
-  status               String
-  draftingAuthority    String?
-  currentVersion       Int
-  parentInstrumentId   String?
-  parent               Instrument?  @relation("Derivation", fields: [parentInstrumentId], references: [id])
-  children             Instrument[] @relation("Derivation")
-  currentVersionRecordId String?  @unique
+  id                     String         @id @default(cuid())
+  idrRef                 String         @unique
+  title                  String
+  documentType           DocumentType   @default(generic)
+  layer                  Int
+  status                 String
+  draftingAuthority      String?
+  currentVersion         Int
+  parentInstrumentId     String?
+  parent                 Instrument?    @relation("Derivation", fields: [parentInstrumentId], references: [id])
+  children               Instrument[]   @relation("Derivation")
+  currentVersionRecordId String?        @unique
   currentVersionRecord   InstrumentVersion? @relation("CurrentVersionPointer", fields: [currentVersionRecordId], references: [id])
-  versions             InstrumentVersion[] @relation("VersionHistory")
-  events               TransitionEvent[]
-  ledgerEntries        LedgerEntry[]
-  parts                Part[]
-  compositionEntries   CompositionEntry[]
+  versions               InstrumentVersion[] @relation("VersionHistory")
+  events                 TransitionEvent[]
+  ledgerEntries          LedgerEntry[]
+  parts                  Part[]
+  compositionEntries     CompositionEntry[]
   committeeMembershipsAsAuthority CommitteeMembership[] @relation("CommitteeMembershipAuthority")
-  /// Comité responsável pela elaboração (espaço de trabalho do comité).
-  committeeId          String?
-  committee            Committee? @relation(fields: [committeeId], references: [id], onDelete: SetNull)
-  /// Consulta pública: prazo e nota de abertura (modo processo).
-  consultationClosesAt DateTime?
-  consultationOpeningNote String? @db.Text
+  committeeId            String?
+  committee              Committee?     @relation(fields: [committeeId], references: [id], onDelete: SetNull)
+  consultationClosesAt   DateTime?
+  consultationOpeningNote String?       @db.Text
   externalReferenceLinks InstrumentExternalReference[]
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+
+  // --- v2 extensions (ADR 0015) ---
+  /// v1 = monólito/Part; v2 = árvore normativa relacional.
+  structuralProfile      StructuralProfile @default(v1)
+  /// Anexo citável: filho derivado; exige parentInstrumentId quando true.
+  isAnnex                Boolean           @default(false)
+  /// Código semântico do documento no path (foundation, preop-regime, …).
+  semanticDocumentCode   String?
+  /// Data de referência histórica (ex. 2026-12-31); não é gatilho automático.
+  terminationDate        DateTime?         @db.Date
+  terminationRequiresExplicitAct Boolean   @default(false)
+  terminationAuthorizedBy  TerminationAuthorizedBy?
+  /// Ex.: committees_constituted, committee_members_active, formal_act_by_secretary_general
+  terminationConditions    String[]        @default([])
+
+  normativeSections      NormativeSection[]
+  instrumentRevisions    InstrumentRevision[]
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([layer])
   @@index([status])
   @@index([committeeId])
+  @@index([structuralProfile])
 }
 
-/// Standing committee (C#01–C#05). Identity for committee workspace and membership.
 model Committee {
   id        String   @id @default(cuid())
-  /// Stable label e.g. C#01 … C#05
   code      String   @unique
   name      String?
   createdAt DateTime @default(now())
@@ -63,13 +78,11 @@ model Committee {
   instruments Instrument[]
 }
 
-/// Referência externa partilhada entre comités (fundamentos, leis, pareceres).
 model ExternalReference {
   id         String   @id @default(cuid())
   kind       ExternalReferenceKind
   title      String
   origin     String
-  /// DOI, número de lei, URL estável, etc.
   stableId   String
   accessedAt DateTime
   status     ExternalReferenceLifecycleStatus?
@@ -112,56 +125,51 @@ enum CommitteeMembershipStatus {
   revoked
 }
 
-/// User participation in a committee. Authority may later reference a nomination instrument (authorityInstrumentId).
 model CommitteeMembership {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  committeeId String
-  committee Committee @relation(fields: [committeeId], references: [id], onDelete: Cascade)
-  startedAt DateTime @default(now())
-  endedAt   DateTime?
-  status    CommitteeMembershipStatus @default(active)
-  /// Optional: instrument of appointment / nomination (authorityRef foundation).
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  committeeId           String
+  committee             Committee @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  startedAt             DateTime @default(now())
+  endedAt               DateTime?
+  status                CommitteeMembershipStatus @default(active)
   authorityInstrumentId String?
   authorityInstrument   Instrument? @relation("CommitteeMembershipAuthority", fields: [authorityInstrumentId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@index([userId, status])
   @@index([committeeId, status])
 }
 
-/// Versioned content snapshot. Markdown string — human-readable, diff-friendly, matches Hub doc-oriented model.
+/// Versioned content snapshot. v1: fonte primária; v2: agregado derivado (contentSourceKind).
 model InstrumentVersion {
-  id                    String   @id @default(cuid())
-  instrumentId          String
-  instrument            Instrument @relation("VersionHistory", fields: [instrumentId], references: [id], onDelete: Cascade)
-  version               Int
-  content               String   @db.Text
-  /// SHA-256 (hex) of canonical payload: `${version}\n${content}` (UTF-8).
-  contentHash           String
-  /// contentHash of the immediately prior version in the same instrument chain (null for v1).
-  previousContentHash   String?
-  supersedesVersion     Int?
-  revisionNote          String?
-  createdAt             DateTime @default(now())
-  currentHeadFor        Instrument? @relation("CurrentVersionPointer")
-  ledgerEntry           LedgerEntry?
-  partVersions          PartVersion[]
+  id                  String   @id @default(cuid())
+  instrumentId        String
+  instrument          Instrument @relation("VersionHistory", fields: [instrumentId], references: [id], onDelete: Cascade)
+  version             Int
+  content             String   @db.Text
+  contentHash         String
+  previousContentHash String?
+  supersedesVersion   Int?
+  revisionNote        String?
+  /// legacy_primary (v1 editorial) | derived (v2 aggregation job).
+  contentSourceKind   InstrumentVersionContentSource @default(legacy_primary)
+  createdAt           DateTime @default(now())
+  currentHeadFor      Instrument? @relation("CurrentVersionPointer")
+  ledgerEntry         LedgerEntry?
+  partVersions        PartVersion[]
 
   @@unique([instrumentId, version])
   @@index([instrumentId])
 }
 
-/// Logical Part (DocHUB Part Store). MVP monolith: exactly one row per Instrument (`partKind` = MONOLITH_BODY).
 model Part {
   id           String   @id @default(cuid())
   instrumentId String
   instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
-  /// Hub-internal kind; MVP uses `MONOLITH_BODY` (see ADR 0003).
   partKind     String   @default("MONOLITH_BODY")
-  /// DocHUB-shaped Part lifecycle projection from `Instrument.status` (ADR 0004).
   partStatus   String   @default("DRAFT")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -173,18 +181,14 @@ model Part {
   @@index([instrumentId])
 }
 
-/// Version of a Part aligned to an InstrumentVersion — aggregate text canonical on `InstrumentVersion.content`; per-Part markdown in `markdownBody` for SECTION/ANNEX (ADR 0008).
 model PartVersion {
   id                  String   @id @default(cuid())
   partId              String
   part                Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
   instrumentVersionId String
   instrumentVersion   InstrumentVersion @relation(fields: [instrumentVersionId], references: [id], onDelete: Cascade)
-  /// Same payload hash as `InstrumentVersion.contentHash` for this instrument revision (aggregate).
   contentHash         String
-  /// Ordering hint; mirrors `CompositionEntry.position` for this Part at this revision.
   ordinal             Int      @default(1)
-  /// SECTION/ANNEX fragment for this revision; null for MONOLITH_BODY / legacy monolith (ADR 0008).
   markdownBody        String?  @db.Text
   createdAt           DateTime @default(now())
 
@@ -192,7 +196,6 @@ model PartVersion {
   @@index([partId])
 }
 
-/// Ordered Parts in the active composition for an Instrument (DocHUB Composition Registry). MVP: single `position` = 1.
 model CompositionEntry {
   id           String   @id @default(cuid())
   instrumentId String
@@ -206,15 +209,13 @@ model CompositionEntry {
   @@index([instrumentId])
 }
 
-/// Append-only status change log at logical instrument level.
 model TransitionEvent {
   id              String     @id @default(cuid())
-  instrumentId  String
+  instrumentId    String
   instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
   fromStatus      String
   toStatus        String
   at              DateTime   @default(now())
-  /// Legacy free-text actor; prefer actorLabel when present.
   actor           String?
   actorKind       ActorKind  @default(system)
   actorLabel      String?
@@ -225,23 +226,22 @@ model TransitionEvent {
   @@index([instrumentId, at])
 }
 
-/// Append-only conceptual ledger (Passo B — DocHUB alignment): one chain per instrument.
 model LedgerEntry {
-  id                    String   @id @default(cuid())
-  instrumentId          String
-  instrument            Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
-  sequence              Int
-  previousEntryId       String?
-  previousEntry         LedgerEntry?  @relation("LedgerChain", fields: [previousEntryId], references: [id], onDelete: SetNull)
-  nextInChain           LedgerEntry[] @relation("LedgerChain")
-  entryType             String
-  payloadHash           String
-  idrRef                String
-  instrumentVersionId   String?  @unique
-  instrumentVersion     InstrumentVersion? @relation(fields: [instrumentVersionId], references: [id], onDelete: SetNull)
-  transitionEventId     String?  @unique
-  transitionEvent       TransitionEvent? @relation(fields: [transitionEventId], references: [id], onDelete: SetNull)
-  createdAt             DateTime @default(now())
+  id                  String   @id @default(cuid())
+  instrumentId        String
+  instrument          Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  sequence            Int
+  previousEntryId     String?
+  previousEntry       LedgerEntry?  @relation("LedgerChain", fields: [previousEntryId], references: [id], onDelete: SetNull)
+  nextInChain         LedgerEntry[] @relation("LedgerChain")
+  entryType           String
+  payloadHash         String
+  idrRef              String
+  instrumentVersionId String?  @unique
+  instrumentVersion   InstrumentVersion? @relation(fields: [instrumentVersionId], references: [id], onDelete: SetNull)
+  transitionEventId   String?  @unique
+  transitionEvent     TransitionEvent? @relation(fields: [transitionEventId], references: [id], onDelete: SetNull)
+  createdAt           DateTime @default(now())
 
   @@unique([instrumentId, sequence])
   @@index([instrumentId, sequence])
@@ -265,7 +265,6 @@ enum ActorKind {
   api_key
 }
 
-/// Operational roles (Fase 5). Users may hold multiple roles; highest export tier wins.
 enum HubRole {
   admin
   registrar
@@ -281,13 +280,190 @@ enum DocumentType {
   generic
 }
 
+// --- v2 enums (ADR 0015) ---
+
+enum StructuralProfile {
+  v1
+  v2
+}
+
+enum NormativeMigrationPhase {
+  pilot
+  deferred
+  complete
+}
+
+enum IdrRefOwnerKind {
+  instrument
+  section
+  article
+  paragraph
+  clause
+}
+
+enum InstrumentVersionContentSource {
+  legacy_primary
+  derived
+}
+
+enum TerminationAuthorizedBy {
+  secretary_general
+}
+
+// --- v2 normative tree (ADR 0015) ---
+
+/// Secção editorial (Preamble, Article I, Change Log, …).
+model NormativeSection {
+  id                    String   @id @default(cuid())
+  instrumentId          String
+  instrument            Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  position              Int
+  code                  String
+  title                 String?
+  nonNormative          Boolean  @default(false)
+  migrationPhase        NormativeMigrationPhase?
+  publishedAt           DateTime?
+  supersededBySectionId String?
+  supersededBy          NormativeSection?  @relation("SectionSupersession", fields: [supersededBySectionId], references: [id], onDelete: SetNull)
+  supersedes            NormativeSection[] @relation("SectionSupersession")
+  articles              NormativeArticle[]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([instrumentId, position])
+  @@unique([instrumentId, code])
+  @@index([instrumentId])
+}
+
+model NormativeArticle {
+  id          String   @id @default(cuid())
+  sectionId   String
+  section     NormativeSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  position    Int
+  articleCode String
+  title       String?
+  paragraphs  NormativeParagraph[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([sectionId, position])
+  @@unique([sectionId, articleCode])
+  @@index([sectionId])
+}
+
+model NormativeParagraph {
+  id            String   @id @default(cuid())
+  articleId     String
+  article       NormativeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  position      Int
+  paragraphCode String
+  clauses       NormativeClause[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([articleId, position])
+  @@unique([articleId, paragraphCode])
+  @@index([articleId])
+}
+
+/// Unidade mínima endereçável; idrRef completo e único no sistema.
+model NormativeClause {
+  id                   String   @id @default(cuid())
+  paragraphId          String
+  paragraph            NormativeParagraph @relation(fields: [paragraphId], references: [id], onDelete: Cascade)
+  position             Int
+  clauseCode           String
+  idrRef               String   @unique
+  publishedAt          DateTime?
+  supersededByClauseId String?
+  supersededBy         NormativeClause?  @relation("ClauseSupersession", fields: [supersededByClauseId], references: [id], onDelete: SetNull)
+  supersedes           NormativeClause[] @relation("ClauseSupersession")
+  currentVersionId     String?  @unique
+  currentVersion       ClauseVersion? @relation("CurrentClauseVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  versions             ClauseVersion[] @relation("ClauseVersionHistory")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([paragraphId, position])
+  @@unique([paragraphId, clauseCode])
+  @@index([paragraphId])
+}
+
+/// Texto canónico por revisão; imutável após publicação/ledger.
+model ClauseVersion {
+  id                  String   @id @default(cuid())
+  clauseId            String
+  clause              NormativeClause @relation("ClauseVersionHistory", fields: [clauseId], references: [id], onDelete: Cascade)
+  version             Int
+  body                String   @db.Text
+  contentHash         String
+  previousContentHash String?
+  revisionNote        String?
+  isCurrent           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  createdBy           String?
+  currentHeadFor      NormativeClause? @relation("CurrentClauseVersion")
+  revisionMemberships InstrumentRevisionClauseVersion[]
+
+  @@unique([clauseId, version])
+  @@index([clauseId])
+  @@index([clauseId, isCurrent])
+}
+
+/// Unicidade global de idrRef semântico activo.
+model IdrRefRegistry {
+  idrRef          String          @id
+  ownerKind       IdrRefOwnerKind
+  ownerId         String
+  grammarVersion  String          @default("1")
+  registeredAt    DateTime        @default(now())
+
+  @@index([ownerKind, ownerId])
+}
+
+/// Ponte idr:HUB-INSTR-* → idrRef semântico durante transição.
+model IdrRefAlias {
+  legacyRef     String  @id
+  canonicalRef  String
+  ownerKind     IdrRefOwnerKind?
+  ownerId       String?
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([canonicalRef])
+}
+
+/// Índice de revisão do documento (agregado derivado; texto canónico nas cláusulas).
+model InstrumentRevision {
+  id                   String   @id @default(cuid())
+  instrumentId         String
+  instrument           Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  revisionNumber       Int
+  aggregateContentHash String
+  createdAt            DateTime @default(now())
+  clauseVersions       InstrumentRevisionClauseVersion[]
+
+  @@unique([instrumentId, revisionNumber])
+  @@index([instrumentId])
+}
+
+model InstrumentRevisionClauseVersion {
+  instrumentRevisionId String
+  instrumentRevision   InstrumentRevision @relation(fields: [instrumentRevisionId], references: [id], onDelete: Cascade)
+  clauseVersionId      String
+  clauseVersion        ClauseVersion @relation(fields: [clauseVersionId], references: [id], onDelete: Restrict)
+
+  @@id([instrumentRevisionId, clauseVersionId])
+  @@index([clauseVersionId])
+}
+
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String?
-  name         String?
-  roles        HubRole[]
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  passwordHash         String?
+  name                 String?
+  roles                HubRole[]
   committeeMemberships CommitteeMembership[]
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 }

@@ -30,8 +30,8 @@ async function main() {
   const fullMd = await fs.readFile(resolveCorpusPath(PREOP_CORPUS_REL), "utf8");
   const { enNormative, ptNormative, changeLog } = splitPreopCorpus(fullMd);
 
-  const s0Articles = parseNormativeMarkdown(enNormative);
-  const s1Articles = parseNormativeMarkdown(ptNormative);
+  const s0Articles = parseNormativeMarkdown(enNormative, { defaultArticleCode: "en" });
+  const s1Articles = parseNormativeMarkdown(ptNormative, { defaultArticleCode: "pt" });
   const s2Articles = parseChangeLogSection(changeLog);
 
   const stats = mergeStats(

@@ -5,7 +5,7 @@ const PARAGRAPH_START =
   /^\s*§\s*(\d+(?:\.\d+)?)(?:\.0)?(?:\s*[-–]\s*([A-Za-z]))?\.?\s*(.*)$/;
 
 const CLAUSE_LINE =
-  /^\s*(?:\(([ivxlcdm]+)\)|(i{1,3}|iv|v|vi{0,3}|ix|x{1,3}|xi{0,3}))\s*[.:]?\s*(.*)$/i;
+  /^\s*(?:\(([ivxlcdm]+)\)|((?:xi{0,3}|x{1,3}|ix|vi{0,3}|iv|i{1,3}|v)))\s*[):.]?\s*(.*)$/i;
 
 const ROMAN_TO_NUM: Record<string, string> = {
   i: "1",
@@ -36,10 +36,10 @@ function parseParagraphBody(lines: string[]): ParsedParagraph | null {
     match[2] ? `${match[1]}-${match[2]}` : match[1],
   );
   const restLines = [...lines];
-  if (match[3]?.trim()) {
-    restLines[0] = match[3];
-  } else {
-    restLines.shift();
+  restLines.shift();
+  const hasAlineas = restLines.some((l) => CLAUSE_LINE.test(l));
+  if (match[3]?.trim() && !hasAlineas) {
+    restLines.unshift(match[3]);
   }
 
   const clauses: ParsedClause[] = [];
@@ -49,7 +49,7 @@ function parseParagraphBody(lines: string[]): ParsedParagraph | null {
     if (!current) return;
     const body = current.parts.join("\n").trim();
     if (body) {
-      clauses.push({ clauseCode: current.code, body });
+      clauses.push({ clauseCode: String(clauses.length + 1), body });
     }
     current = null;
   };
@@ -81,7 +81,7 @@ function parseParagraphBody(lines: string[]): ParsedParagraph | null {
   return { paragraphCode, clauses };
 }
 
-function splitLanguageBlocks(content: string): ParsedLanguageBlock[] {
+function splitLanguageBlocks(content: string, defaultArticleCode = "en"): ParsedLanguageBlock[] {
   const trimmed = content.replace(/^\uFEFF/, "").trim();
   if (!trimmed) return [];
 
@@ -112,12 +112,18 @@ function splitLanguageBlocks(content: string): ParsedLanguageBlock[] {
     return blocks;
   }
 
-  const parts = trimmed.split(/\n---\n/);
-  if (parts.length >= 2) {
+  const normativeParts = trimmed
+    .split(/\n---\n/)
+    .map((p) => p.trim())
+    .filter((p) => /^\s*§/m.test(p));
+  if (normativeParts.length >= 2) {
     return [
-      { articleCode: "en", paragraphs: extractParagraphs(parts[0]) },
-      { articleCode: "pt", paragraphs: extractParagraphs(parts.slice(1).join("\n---\n")) },
+      { articleCode: "en", paragraphs: extractParagraphs(normativeParts[0]) },
+      { articleCode: "pt", paragraphs: extractParagraphs(normativeParts[1]) },
     ];
+  }
+  if (normativeParts.length === 1) {
+    return [{ articleCode: defaultArticleCode, paragraphs: extractParagraphs(normativeParts[0]) }];
   }
 
   return [{ articleCode: "en", paragraphs: extractParagraphs(trimmed) }];
@@ -153,11 +159,19 @@ function extractParagraphs(block: string): ParsedParagraph[] {
   return paragraphs;
 }
 
+export type ParseNormativeMarkdownOptions = {
+  /** When the file has a single normative block (no EN/PT separator). */
+  defaultArticleCode?: string;
+};
+
 /**
  * Parses bilingual normative markdown into articles (art.en / art.pt) with paragraphs and clauses.
  */
-export function parseNormativeMarkdown(content: string): ParsedArticle[] {
-  const blocks = splitLanguageBlocks(content);
+export function parseNormativeMarkdown(
+  content: string,
+  options?: ParseNormativeMarkdownOptions,
+): ParsedArticle[] {
+  const blocks = splitLanguageBlocks(content, options?.defaultArticleCode);
   return blocks.map((b) => ({
     articleCode: normalizeSegmentCode(b.articleCode),
     paragraphs: b.paragraphs.map((p) => ({

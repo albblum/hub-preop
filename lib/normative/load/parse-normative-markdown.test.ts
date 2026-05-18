@@ -74,6 +74,30 @@ describe("parse-normative-markdown", () => {
     expect(() => assertPreamblePtSection6Valid(md)).toThrow(/```/);
   });
 
+  it("splits preamble with title separator and EN/PT separator", () => {
+    const md = `
+Title line
+
+---
+
+	§1 EN one.
+
+	§2 EN two.
+
+---
+
+	§1 PT um.
+
+	§2 PT dois.
+`;
+    const articles = parseNormativeMarkdown(md);
+    expect(articles).toHaveLength(2);
+    expect(articles[0].articleCode).toBe("en");
+    expect(articles[1].articleCode).toBe("pt");
+    expect(articles[0].paragraphs).toHaveLength(2);
+    expect(articles[1].paragraphs).toHaveLength(2);
+  });
+
   it("splits preop corpus into EN, PT, and change log", () => {
     const md = `
 	§1 EN text.

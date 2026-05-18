@@ -68,7 +68,7 @@ Corpo do PR preparado (Passo 6.4 do plano):
 | **B** | Publicar nós piloto — **não aplicado** |
 | **C** | Adiar decisão — bloquear merge até PO |
 
-**Registo implementador:** **C — adiar** até Pilot assinalar A ou B no PR.
+**Registo PO (2026-05-18):** **A confirmada** — todos os nós em draft no piloto; publicação formal adiada (ADR 0015 §10). Não bloqueia merge.
 
 ---
 

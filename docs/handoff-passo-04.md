@@ -1,6 +1,6 @@
 ## Handoff — Passo 4 (Fase 4)
 
-- **Branch:** `feat/hub-preop-schema-v2-phase1` (commit após este passo)
+- **Branch / commit:** `feat/hub-preop-schema-v2-phase1` · `1dfef1a`
 - **Agregado (lab, pós `aggregate-v2-instruments.ts --all`):**
   - `idr:c:foundation` — hash `73843aa827d24cacd30af691fe80f4e953599ec09b6e1ff7d7f691aeaece65e6` · 54 cláusulas · ~12.5k chars
   - `idr:c:preop-regime` — hash `0f2b86c9e595d2824f4175bb8447198b5d2d22abd091283906281d16e72d016d` · 57 cláusulas · ~15.7k chars

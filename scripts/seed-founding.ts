@@ -1,6 +1,10 @@
 /**
  * Idempotent founding load: dev users (optional) + placeholder instruments with stable idr:ref.
  * Run: `npm run seed:founding` (ensure `DATABASE_URL` is set, e.g. via `.env`)
+ *
+ * If you changed `SEED_*_PASSWORD` in `.env` after users were already created, re-run with:
+ * `SEED_UPDATE_EXISTING_PASSWORDS=1 npm run seed:users-only`
+ * so hashes match your current env (dev/lab only).
  */
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
@@ -66,8 +70,20 @@ async function ensureUser(input: {
   name: string;
   roles: ("admin" | "registrar" | "reviewer" | "viewer_public" | "viewer_registered")[];
 }) {
+  const updatePasswords =
+    process.env.SEED_UPDATE_EXISTING_PASSWORDS === "1" ||
+    process.env.SEED_UPDATE_EXISTING_PASSWORDS === "true";
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) {
+    if (updatePasswords) {
+      const passwordHash = await bcrypt.hash(input.passwordPlain, 10);
+      const updated = await prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash, name: input.name, roles: input.roles },
+      });
+      console.log(`User exists — password and profile updated: ${input.email}`);
+      return updated;
+    }
     console.log(`User exists, skip: ${input.email}`);
     return existing;
   }

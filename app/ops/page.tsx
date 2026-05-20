@@ -9,6 +9,10 @@ import { redirect } from "next/navigation";
 import { canViewOperationalQueues } from "@/lib/rbac";
 import { mayAccessComiteWorkspace, type SessionLike } from "@/lib/committee-access";
 import { getPublicMarketingHomeUrl } from "@/lib/public-marketing-home";
+import {
+  hasSecretaryGeneralInstitutionalScope,
+  sessionRoleLabels,
+} from "@/lib/session-role-labels";
 
 export const metadata = {
   title: "Ops — Hub pre-op",
@@ -26,7 +30,7 @@ export default async function OpsPage() {
 
   const roles = session.user.roles ?? [];
   const committees = session.user.committeeMemberships ?? [];
-  const isSecretaryGeneral = roles.includes("registrar") || roles.includes("admin");
+  const isSecretaryGeneral = hasSecretaryGeneralInstitutionalScope(roles);
   const mayViewOperationalQueues = canViewOperationalQueues(roles, committees);
   const sessionLike: SessionLike = {
     user: { roles, committeeMemberships: committees },
@@ -36,14 +40,7 @@ export default async function OpsPage() {
   const memberIdrRef =
     session.user.memberIdrRef ?? `idr:MEMBER-${session.user.id.slice(-8).toUpperCase()}`;
   const identityName = session.user.name ?? session.user.email ?? "Membro";
-  const activeRoleLabels = ["Membro"];
-  for (const c of committees) {
-    activeRoleLabels.push(`Participante ${c.code}`);
-  }
-  if (committees.length === 0 && roles.includes("reviewer")) {
-    activeRoleLabels.push("Participante (legado: reviewer)");
-  }
-  if (isSecretaryGeneral) activeRoleLabels.push("Secretário Geral");
+  const activeRoleLabels = sessionRoleLabels(roles, committees);
 
   const byStatus = new Map(aggregates.byStatus.map((r) => [r.status, r.count]));
   const pendingConsultation = byStatus.get("under-review") ?? 0;

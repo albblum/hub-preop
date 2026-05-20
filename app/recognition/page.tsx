@@ -4,20 +4,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import type { CommitteeMembershipClaim } from "@/lib/rbac";
 import { safeInternalPath } from "@/lib/safe-internal-path";
-
-function roleLabels(roles: string[], committees: CommitteeMembershipClaim[]): string[] {
-  const labels = ["Membro"];
-  for (const c of committees) {
-    labels.push(`Participante — ${c.code}`);
-  }
-  if (committees.length === 0 && roles.includes("reviewer")) {
-    labels.push("Participante — (legado: reviewer)");
-  }
-  if (roles.includes("registrar") || roles.includes("admin")) labels.push("Secretário Geral");
-  return labels;
-}
+import { sessionRoleLabels } from "@/lib/session-role-labels";
 
 function formatJoinedDate(iso?: string): string {
   if (!iso) return "Não disponível";
@@ -51,7 +39,7 @@ function RecognitionContent() {
     );
   }
 
-  const labels = roleLabels(session.user.roles ?? [], session.user.committeeMemberships ?? []);
+  const labels = sessionRoleLabels(session.user.roles ?? [], session.user.committeeMemberships ?? []);
 
   async function signOutToPublicSite() {
     const landing = process.env.NEXT_PUBLIC_LANDING_ORIGIN?.trim().replace(/\/$/, "");

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { PublicMarketingHomeLink } from "@/components/public-marketing-home-link";
 
 type InstrumentListItem = {
   id: string;
@@ -112,6 +113,11 @@ export default function Home() {
             idr:ref, versioned content, transition log. Mutations require sign-in (RBAC).
           </p>
           <div className="flex flex-wrap gap-3 text-sm">
+            <PublicMarketingHomeLink className="text-amber-200/90 underline">
+              {process.env.NEXT_PUBLIC_LANDING_ORIGIN?.trim()
+                ? "Site público IDR"
+                : "Início do Hub (técnico)"}
+            </PublicMarketingHomeLink>
             {sessionStatus === "authenticated" ? (
               <>
                 <span className="text-emerald-400">

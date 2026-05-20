@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { PublicMarketingHomeLink } from "@/components/public-marketing-home-link";
 import { auth } from "@/auth";
+import { getPublicMarketingHomeUrl } from "@/lib/public-marketing-home";
 import { redirect, notFound } from "next/navigation";
 import { getInstrumentByIdrRef } from "@/lib/instrument-service";
 import { canViewOperationalQueues } from "@/lib/rbac";
@@ -14,7 +16,7 @@ export default async function ReviewInstrumentPage({ params }: PageProps) {
     redirect(`/login?callbackUrl=${encodeURIComponent("/review")}`);
   }
   if (!canViewOperationalQueues(session.user.roles, session.user.committeeMemberships)) {
-    redirect("/");
+    redirect(getPublicMarketingHomeUrl() ?? "/");
   }
 
   const { idrRef: encodedIdrRef } = await params;
@@ -23,6 +25,8 @@ export default async function ReviewInstrumentPage({ params }: PageProps) {
   if (!item) {
     notFound();
   }
+
+  const homeLabel = getPublicMarketingHomeUrl() ? "Site público IDR" : "Início do Hub (técnico)";
 
   return (
     <div className="min-h-screen bg-zinc-950 p-8 font-sans text-zinc-100">
@@ -36,9 +40,7 @@ export default async function ReviewInstrumentPage({ params }: PageProps) {
             <Link className="text-amber-200/90 underline" href="/ops">
               Ops dashboard
             </Link>
-            <Link className="text-amber-200/90 underline" href="/">
-              Hub home
-            </Link>
+            <PublicMarketingHomeLink className="text-amber-200/90 underline">{homeLabel}</PublicMarketingHomeLink>
           </div>
         </header>
 

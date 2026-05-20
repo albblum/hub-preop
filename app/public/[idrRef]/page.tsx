@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { PublicMarketingHomeLink } from "@/components/public-marketing-home-link";
+import { getPublicMarketingHomeUrl } from "@/lib/public-marketing-home";
 import { notFound } from "next/navigation";
 import { getPublicInstrumentByIdrRef } from "@/lib/publication-service";
 
@@ -28,6 +30,8 @@ export default async function PublicInstrumentPage({ params, searchParams }: Pag
     notFound();
   }
 
+  const homeLabel = getPublicMarketingHomeUrl() ? "Site público IDR" : "Início do Hub (técnico)";
+
   return (
     <div className="min-h-screen bg-zinc-950 p-8 font-sans text-zinc-100">
       <main className="mx-auto max-w-4xl space-y-6">
@@ -47,9 +51,7 @@ export default async function PublicInstrumentPage({ params, searchParams }: Pag
             <Link className="text-amber-200/90 underline" href="/public">
               Back to public catalog
             </Link>
-            <Link className="text-amber-200/90 underline" href="/">
-              Hub home
-            </Link>
+            <PublicMarketingHomeLink className="text-amber-200/90 underline">{homeLabel}</PublicMarketingHomeLink>
             {!item.isCurrentVersion ? (
               <Link
                 className="text-amber-200/90 underline"

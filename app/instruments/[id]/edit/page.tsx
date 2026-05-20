@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { PublicMarketingHomeLink } from "@/components/public-marketing-home-link";
 import { canAppendContent } from "@/lib/rbac";
 
 type MultipartSegment = {
@@ -61,6 +62,7 @@ export default function InstrumentEditPage() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
   const router = useRouter();
+  const landingConfigured = Boolean(process.env.NEXT_PUBLIC_LANDING_ORIGIN?.trim());
   const { data: session, status: sessionStatus } = useSession();
 
   const [detail, setDetail] = useState<InstrumentDetail | null>(null);
@@ -204,9 +206,9 @@ export default function InstrumentEditPage() {
               </p>
             )}
           </div>
-          <Link className="text-sm text-amber-200/90 underline" href="/">
-            ← Início do Hub
-          </Link>
+          <PublicMarketingHomeLink className="text-sm text-amber-200/90 underline">
+            {landingConfigured ? "← Site público IDR" : "← Início do Hub"}
+          </PublicMarketingHomeLink>
         </header>
 
         {!mayAppend && (

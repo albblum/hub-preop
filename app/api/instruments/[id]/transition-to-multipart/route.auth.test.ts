@@ -9,7 +9,16 @@ vi.mock("@/lib/instrument-service", () => ({
   isMonolithToMultipartTransitionEnabled: vi.fn(),
 }));
 
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    instrument: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
+
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import {
   isMonolithToMultipartTransitionEnabled,
   transitionMonolithToMultipartProfile,
@@ -22,6 +31,10 @@ describe("POST /api/instruments/[id]/transition-to-multipart authorization", () 
     vi.mocked(transitionMonolithToMultipartProfile).mockReset();
     vi.mocked(isMonolithToMultipartTransitionEnabled).mockReset();
     vi.mocked(isMonolithToMultipartTransitionEnabled).mockReturnValue(true);
+    vi.mocked(prisma.instrument.findUnique).mockReset();
+    vi.mocked(prisma.instrument.findUnique).mockResolvedValue({
+      committeeId: null,
+    } as never);
   });
 
   it("returns 401 when unauthenticated", async () => {

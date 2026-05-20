@@ -1,10 +1,13 @@
 import Link from "next/link";
+import { PublicMarketingHomeLink } from "@/components/public-marketing-home-link";
+import { getPublicMarketingHomeUrl } from "@/lib/public-marketing-home";
 import { listPublicCatalog } from "@/lib/publication-service";
 
 export const dynamic = "force-dynamic";
 
 export default async function PublicCatalogPage() {
   const items = await listPublicCatalog(100);
+  const homeLabel = getPublicMarketingHomeUrl() ? "Site público IDR" : "Início do Hub (técnico)";
 
   return (
     <div className="min-h-screen bg-zinc-950 p-8 font-sans text-zinc-100">
@@ -15,9 +18,9 @@ export default async function PublicCatalogPage() {
             Canonical list of instruments currently publicable in the pre-operational Hub (see ADR
             0006).
           </p>
-          <Link className="text-sm text-amber-200/90 underline" href="/">
-            Back to hub home
-          </Link>
+          <PublicMarketingHomeLink className="text-sm text-amber-200/90 underline">
+            {homeLabel}
+          </PublicMarketingHomeLink>
         </header>
 
         <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">

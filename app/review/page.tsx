@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { PublicMarketingHomeLink } from "@/components/public-marketing-home-link";
 import { auth } from "@/auth";
+import { getPublicMarketingHomeUrl } from "@/lib/public-marketing-home";
 import { redirect } from "next/navigation";
 import { listInstruments } from "@/lib/instrument-service";
 import { canViewOperationalQueues } from "@/lib/rbac";
@@ -10,10 +12,11 @@ export default async function ReviewIndexPage() {
     redirect(`/login?callbackUrl=${encodeURIComponent("/review")}`);
   }
   if (!canViewOperationalQueues(session.user.roles, session.user.committeeMemberships)) {
-    redirect("/");
+    redirect(getPublicMarketingHomeUrl() ?? "/");
   }
 
   const { items } = await listInstruments({ take: 100 });
+  const homeLabel = getPublicMarketingHomeUrl() ? "Site público IDR" : "Início do Hub (técnico)";
 
   return (
     <div className="min-h-screen bg-zinc-950 p-8 font-sans text-zinc-100">
@@ -25,9 +28,7 @@ export default async function ReviewIndexPage() {
             eventos).
           </p>
           <div className="flex flex-wrap gap-4 text-sm">
-            <Link className="text-amber-200/90 underline" href="/">
-              Hub home
-            </Link>
+            <PublicMarketingHomeLink className="text-amber-200/90 underline">{homeLabel}</PublicMarketingHomeLink>
             <Link className="text-amber-200/90 underline" href="/ops">
               Ops
             </Link>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PublicMarketingHomeLink } from "@/components/public-marketing-home-link";
 import { auth } from "@/auth";
 import {
   instrumentAggregates,
@@ -7,6 +8,7 @@ import {
 import { redirect } from "next/navigation";
 import { canViewOperationalQueues } from "@/lib/rbac";
 import { mayAccessComiteWorkspace, type SessionLike } from "@/lib/committee-access";
+import { getPublicMarketingHomeUrl } from "@/lib/public-marketing-home";
 
 export const metadata = {
   title: "Ops — Hub pre-op",
@@ -83,6 +85,8 @@ export default async function OpsPage() {
     return score[a.urgency] - score[b.urgency];
   });
 
+  const homeLabel = getPublicMarketingHomeUrl() ? "Site público IDR" : "Início do Hub (técnico)";
+
   return (
     <div className="min-h-screen bg-zinc-950 p-8 text-zinc-100">
       <main className="mx-auto max-w-4xl space-y-10">
@@ -112,6 +116,9 @@ export default async function OpsPage() {
             <Link className="text-zinc-400 underline hover:text-zinc-200" href="/public">
               DocHub público
             </Link>
+            <PublicMarketingHomeLink className="text-zinc-400 underline hover:text-zinc-200">
+              {homeLabel}
+            </PublicMarketingHomeLink>
           </div>
         </header>
 

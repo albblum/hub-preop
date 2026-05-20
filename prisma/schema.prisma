@@ -461,6 +461,16 @@ model InstrumentRevisionClauseVersion {
   @@index([clauseVersionId])
 }
 
+/// Mailing-list signups from the public DocHub landing (cross-origin POST).
+model PublicSubscriber {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model User {
   id                   String    @id @default(cuid())
   email                String    @unique

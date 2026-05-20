@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import type { CommitteeMembershipClaim } from "@/lib/rbac";
+import { safeInternalPath } from "@/lib/safe-internal-path";
 
 function roleLabels(roles: string[], committees: CommitteeMembershipClaim[]): string[] {
   const labels = ["Membro"];
@@ -28,7 +29,7 @@ function formatJoinedDate(iso?: string): string {
 function RecognitionContent() {
   const { data: session, status } = useSession();
   const search = useSearchParams();
-  const next = search.get("next") ?? "/ops";
+  const next = safeInternalPath(search.get("next"), "/ops");
 
   if (status === "loading") {
     return <div className="p-8 text-zinc-300">Carregando sessão…</div>;
@@ -51,6 +52,16 @@ function RecognitionContent() {
   }
 
   const labels = roleLabels(session.user.roles ?? [], session.user.committeeMemberships ?? []);
+
+  async function signOutToPublicSite() {
+    const landing = process.env.NEXT_PUBLIC_LANDING_ORIGIN?.trim().replace(/\/$/, "");
+    if (landing) {
+      await signOut({ redirect: false });
+      window.location.assign(landing);
+      return;
+    }
+    await signOut({ callbackUrl: "/login" });
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 p-8 text-zinc-100">
@@ -100,7 +111,7 @@ function RecognitionContent() {
           </Link>
           <button
             type="button"
-            onClick={() => void signOut({ callbackUrl: "/login" })}
+            onClick={() => void signOutToPublicSite()}
             className="rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
           >
             Encerrar sessão

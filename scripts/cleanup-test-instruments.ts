@@ -1,6 +1,7 @@
 /**
- * Remove lab DB noise from Vitest reliability/transition suites (Option A).
- * Keeps founding placeholders 00009001–00009003 and all semantic idrRefs.
+ * Remove lab DB noise from Vitest reliability/transition suites.
+ * Deletes instruments whose title matches transition-* or reliability-*.
+ * Does not use idrRef numeric ranges (avoids deleting institutional legacy rows).
  *
  * Run: `npm run db:cleanup-test-instruments`
  * Dry-run: `npm run db:cleanup-test-instruments -- --dry-run`
@@ -9,16 +10,22 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-/** First idrRef allocated by automated DB tests (after founding seed). */
-export const TEST_ARTIFACT_IDR_REF_MIN = "idr:HUB-INSTR-00009004";
-/** Upper bound observed from reliability + transition-monolith test runs. */
-export const TEST_ARTIFACT_IDR_REF_MAX = "idr:HUB-INSTR-00009119";
+/** Vitest suites: reliability-flows, instrument-service.transition-monolith */
+export const TEST_ARTIFACT_TITLE_PREFIXES = ["transition-", "reliability-"] as const;
 
 const PRESERVED_SEMANTIC = [
   "idr:c:foundation",
   "idr:c:preop-regime",
   "idr:i:sg:nomination:provisional-members:v1",
 ] as const;
+
+function testArtifactTitleWhere() {
+  return {
+    OR: TEST_ARTIFACT_TITLE_PREFIXES.map((prefix) => ({
+      title: { startsWith: prefix },
+    })),
+  };
+}
 
 function seqFromIdrRef(idrRef: string): number {
   const m = idrRef.match(/(\d+)$/);
@@ -43,33 +50,31 @@ async function main() {
   const dryRun = process.argv.includes("--dry-run");
 
   const toDelete = await prisma.instrument.findMany({
-    where: {
-      idrRef: { gte: TEST_ARTIFACT_IDR_REF_MIN, lte: TEST_ARTIFACT_IDR_REF_MAX },
-    },
+    where: testArtifactTitleWhere(),
     select: { id: true, idrRef: true, title: true },
     orderBy: { idrRef: "asc" },
   });
 
   console.log(
-    dryRun ? "DRY-RUN — test instrument cleanup (Option A)" : "DELETE — test instrument cleanup (Option A)",
+    dryRun
+      ? "DRY-RUN — test instrument cleanup (title filter)"
+      : "DELETE — test instrument cleanup (title filter)",
   );
-  console.log(`Range: ${TEST_ARTIFACT_IDR_REF_MIN} … ${TEST_ARTIFACT_IDR_REF_MAX}`);
+  console.log(`Title prefixes: ${TEST_ARTIFACT_TITLE_PREFIXES.join(", ")}`);
   console.log(`Candidates: ${toDelete.length}`);
 
-  if (toDelete.length > 0 && toDelete.length <= 10) {
+  if (toDelete.length > 0 && toDelete.length <= 15) {
     for (const row of toDelete) {
       console.log(`  - ${row.idrRef}  ${row.title}`);
     }
-  } else if (toDelete.length > 10) {
-    console.log(`  first: ${toDelete[0]?.idrRef}`);
-    console.log(`  last:  ${toDelete[toDelete.length - 1]?.idrRef}`);
+  } else if (toDelete.length > 15) {
+    console.log(`  first: ${toDelete[0]?.idrRef} (${toDelete[0]?.title})`);
+    console.log(`  last:  ${toDelete[toDelete.length - 1]?.idrRef} (${toDelete[toDelete.length - 1]?.title})`);
   }
 
   if (!dryRun && toDelete.length > 0) {
     const result = await prisma.instrument.deleteMany({
-      where: {
-        idrRef: { gte: TEST_ARTIFACT_IDR_REF_MIN, lte: TEST_ARTIFACT_IDR_REF_MAX },
-      },
+      where: testArtifactTitleWhere(),
     });
     console.log(`Deleted: ${result.count}`);
     const nextSeq = await syncIdrSequenceToMaxInstrument();
@@ -83,6 +88,14 @@ async function main() {
   console.log("\nRemaining instruments:");
   for (const row of remaining) {
     console.log(`  ${row.idrRef} — ${row.title}`);
+  }
+
+  const strayTestTitles = remaining.filter((r) =>
+    TEST_ARTIFACT_TITLE_PREFIXES.some((p) => r.title.startsWith(p)),
+  );
+  if (strayTestTitles.length > 0) {
+    console.error("\nERROR: test-title instruments still present:", strayTestTitles.length);
+    process.exit(1);
   }
 
   const missingSemantic = PRESERVED_SEMANTIC.filter(

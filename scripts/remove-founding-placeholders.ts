@@ -1,31 +1,22 @@
 /**
- * Remove lab DB noise from Vitest reliability/transition suites.
- * Deletes instruments whose title matches transition-* or reliability-*.
- * Does not use idrRef numeric ranges (avoids deleting institutional legacy rows).
- *
- * Run: `npm run db:cleanup-test-instruments`
- * Dry-run: `npm run db:cleanup-test-instruments -- --dry-run`
+ * Remove retired founding placeholder instruments from the lab DB.
+ * Run: `npm run db:remove-founding-placeholders`
  */
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-/** Vitest suites: reliability-flows, instrument-service.transition-monolith */
-export const TEST_ARTIFACT_TITLE_PREFIXES = ["transition-", "reliability-"] as const;
+export const FOUNDING_PLACEHOLDER_IDR_REFS = [
+  "idr:HUB-INSTR-00009001",
+  "idr:HUB-INSTR-00009002",
+  "idr:HUB-INSTR-00009003",
+] as const;
 
 const PRESERVED_SEMANTIC = [
   "idr:c:foundation",
   "idr:c:preop-regime",
   "idr:i:sg:nomination:provisional-members:v1",
 ] as const;
-
-function testArtifactTitleWhere() {
-  return {
-    OR: TEST_ARTIFACT_TITLE_PREFIXES.map((prefix) => ({
-      title: { startsWith: prefix },
-    })),
-  };
-}
 
 function seqFromIdrRef(idrRef: string): number {
   const m = idrRef.match(/(\d+)$/);
@@ -48,33 +39,22 @@ async function syncIdrSequenceToMaxInstrument() {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
-
-  const toDelete = await prisma.instrument.findMany({
-    where: testArtifactTitleWhere(),
+  const found = await prisma.instrument.findMany({
+    where: { idrRef: { in: [...FOUNDING_PLACEHOLDER_IDR_REFS] } },
     select: { id: true, idrRef: true, title: true },
     orderBy: { idrRef: "asc" },
   });
 
-  console.log(
-    dryRun
-      ? "DRY-RUN — test instrument cleanup (title filter)"
-      : "DELETE — test instrument cleanup (title filter)",
-  );
-  console.log(`Title prefixes: ${TEST_ARTIFACT_TITLE_PREFIXES.join(", ")}`);
-  console.log(`Candidates: ${toDelete.length}`);
-
-  if (toDelete.length > 0 && toDelete.length <= 15) {
-    for (const row of toDelete) {
-      console.log(`  - ${row.idrRef}  ${row.title}`);
-    }
-  } else if (toDelete.length > 15) {
-    console.log(`  first: ${toDelete[0]?.idrRef} (${toDelete[0]?.title})`);
-    console.log(`  last:  ${toDelete[toDelete.length - 1]?.idrRef} (${toDelete[toDelete.length - 1]?.title})`);
+  console.log(dryRun ? "DRY-RUN — remove founding placeholders" : "DELETE — founding placeholders");
+  console.log(`Targets: ${FOUNDING_PLACEHOLDER_IDR_REFS.join(", ")}`);
+  console.log(`Found: ${found.length}`);
+  for (const row of found) {
+    console.log(`  - ${row.idrRef}  ${row.title}`);
   }
 
-  if (!dryRun && toDelete.length > 0) {
+  if (!dryRun && found.length > 0) {
     const result = await prisma.instrument.deleteMany({
-      where: testArtifactTitleWhere(),
+      where: { idrRef: { in: [...FOUNDING_PLACEHOLDER_IDR_REFS] } },
     });
     console.log(`Deleted: ${result.count}`);
     const nextSeq = await syncIdrSequenceToMaxInstrument();
@@ -90,11 +70,11 @@ async function main() {
     console.log(`  ${row.idrRef} — ${row.title}`);
   }
 
-  const strayTestTitles = remaining.filter((r) =>
-    TEST_ARTIFACT_TITLE_PREFIXES.some((p) => r.title.startsWith(p)),
+  const leftover = FOUNDING_PLACEHOLDER_IDR_REFS.filter((ref) =>
+    remaining.some((r) => r.idrRef === ref),
   );
-  if (strayTestTitles.length > 0) {
-    console.error("\nERROR: test-title instruments still present:", strayTestTitles.length);
+  if (leftover.length > 0) {
+    console.error("\nERROR: placeholders still present:", leftover.join(", "));
     process.exit(1);
   }
 
@@ -106,7 +86,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("\nOK — institutional instruments intact.");
+  console.log("\nOK — only institutional documents remain (plus any test-title rows; run db:cleanup-test-instruments).");
 }
 
 main()

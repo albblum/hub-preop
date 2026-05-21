@@ -27,6 +27,7 @@
     "db:backup": "bash scripts/backup-db.sh",
     "db:restore": "bash scripts/restore-db.sh",
     "db:cleanup-test-instruments": "tsx scripts/cleanup-test-instruments.ts",
+    "db:remove-founding-placeholders": "tsx scripts/remove-founding-placeholders.ts",
     "verify:reliability": "bash scripts/verify-reliability.sh",
     "check:env": "bash scripts/check-env.sh",
     "db:reset": "prisma migrate reset --force",

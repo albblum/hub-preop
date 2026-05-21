@@ -1,5 +1,6 @@
 /**
- * Idempotent founding load: dev users (optional) + placeholder instruments with stable idr:ref.
+ * Idempotent founding load: dev users and committee scaffolding (no placeholder instruments).
+ * Institutional documents: `load-v2-constitutional-foundation.ts`, `load-v2-preop-regime.ts`, Movement 2 seed.
  * Run: `npm run seed:founding` (ensure `DATABASE_URL` is set, e.g. via `.env`)
  *
  * If you changed `SEED_*_PASSWORD` in `.env` after users were already created, re-run with:
@@ -216,46 +217,11 @@ async function main() {
   });
 
   if (skipInstruments) {
-    console.log("SEED_SKIP_INSTRUMENTS set — users only, no placeholder instruments.");
+    console.log("SEED_SKIP_INSTRUMENTS set — users and committees only.");
   } else {
-    const framework = await ensureInstrument({
-      idrRef: "idr:HUB-INSTR-00009001",
-      title: "MOC — Framework (founding placeholder)",
-      layer: 1,
-      status: "in-force",
-      draftingAuthority: "regional-placeholder",
-      content:
-        "Founding placeholder for the **Framework** pillar (MOC). Full text lives in governed docs; " +
-        "this row proves idr:ref allocation, versioning, and operational listing.\n\n" +
-        "See also: Document Hub (Tech Specs) seed sibling.",
-      parentInstrumentId: null,
-    });
-
-    await ensureInstrument({
-      idrRef: "idr:HUB-INSTR-00009002",
-      title: "Document Hub (Tech Specs) — founding stub",
-      layer: 2,
-      status: "normalization-pending",
-      draftingAuthority: "regional-placeholder",
-      parentInstrumentId: framework.id,
-      content:
-        "Founding placeholder referencing the **Document Hub (Tech Specs)**. Use the normalization queue " +
-        "to resolve this item (in-force, under-review for GA, or revoked).\n\n" +
-        "Link-style summary only in MVP; operational proof over full publication.",
-    });
-
-    await ensureInstrument({
-      idrRef: "idr:HUB-INSTR-00009003",
-      title: "Instrumento exemplo — espaço do comité C#01 (rascunho)",
-      layer: 2,
-      status: "draft",
-      draftingAuthority: "committee-placeholder",
-      parentInstrumentId: framework.id,
-      committeeCode: "C#01",
-      content:
-        "Texto de exemplo para o ateliê normativo do comité. Substituir pela minuta real.\n\n" +
-        "Este instrumento permanece em **modo elaboração** até à abertura formal de consulta pública.",
-    });
+    console.log(
+      "Skipping retired HUB-INSTR-00009001–00009003 placeholders; use v2 load scripts for institutional instruments.",
+    );
   }
 
   await syncIdrSequenceFromInstruments();

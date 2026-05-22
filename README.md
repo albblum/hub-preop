@@ -11,6 +11,13 @@ Next.js (App Router) + PostgreSQL + Prisma. Instrument **stubs** only; Core Regi
 3. `npm install` then `npx prisma migrate deploy` (or `prisma migrate dev` for local iteration).
 4. `npm run dev` — open [http://localhost:3000](http://localhost:3000).
 
+**Ecossistema completo (Hub + landing v0 + Postgres)** — na raiz do workspace `Cursor_project1`:
+
+```bash
+./scripts/start-ecosystem.sh    # arranca tudo em background
+./scripts/stop-ecosystem.sh     # pára Hub e landing (BD mantém-se)
+```
+
 Formal bilingual setup and gate steps: **`AlblumZ deeds/IDR/02_Documentos/HUB_PREOP/Fase2_Tech_Setup_and_Runbook.md`** (authoritative runbook).
 
 ## Scripts

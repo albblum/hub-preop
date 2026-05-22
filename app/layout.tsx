@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { HubChrome } from "@/components/hub-chrome";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -26,7 +27,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <Providers>{children}</Providers>
+        <Providers>
+          <HubChrome>{children}</HubChrome>
+        </Providers>
       </body>
     </html>
   );

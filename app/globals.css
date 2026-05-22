@@ -10,6 +10,43 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* IDR DocHUB — verdes (identidade) */
+  --color-green-900: #1B4332;
+  --color-green-700: #2D6A4F;
+  --color-green-500: #40916C;
+  --color-green-300: #74C69D;
+  --color-green-100: #D8F3DC;
+
+  /* IDR DocHUB — laranja (atenção) */
+  --color-orange-900: #B5451B;
+  --color-orange-500: #E76F51;
+  --color-orange-300: #F4A261;
+  --color-orange-100: #FDEBD0;
+
+  /* IDR DocHUB — burgundi (autoridade) */
+  --color-burgundy-900: #6B1A2A;
+  --color-burgundy-700: #9B2335;
+  --color-burgundy-500: #C85A6A;
+  --color-burgundy-100: #F5E6E8;
+
+  /* IDR DocHUB — base */
+  --color-surface: #F8F9FA;
+  --color-surface-secondary: #F1F3F5;
+  --color-border: #E9ECEF;
+  --color-text-primary: #212529;
+  --color-text-secondary: #6C757D;
+
+  /* IDR DocHUB — tipografia (documentos) */
+  --font-document: Georgia, "Times New Roman", serif;
+
+  /* IDR DocHUB — status semânticos */
+  --color-status-draft: var(--color-surface-secondary);
+  --color-status-deliberation: var(--color-orange-300);
+  --color-status-pending: var(--color-orange-500);
+  --color-status-approved: var(--color-green-300);
+  --color-status-published: var(--color-burgundy-500);
+  --color-status-archived: var(--color-burgundy-100);
 }
 
 @media (prefers-color-scheme: dark) {

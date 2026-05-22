@@ -23,6 +23,8 @@
     "submit:content": "tsx scripts/submit-content.ts",
     "test:g1:markdown-flow": "bash scripts/test-g1-markdown-flow.sh",
     "start:browser-ui": "bash scripts/start-browser-ui.sh",
+    "dev:ecosystem": "bash ../scripts/start-ecosystem.sh",
+    "stop:ecosystem": "bash ../scripts/stop-ecosystem.sh",
     "push:github": "bash scripts/push-to-github.sh",
     "db:backup": "bash scripts/backup-db.sh",
     "db:restore": "bash scripts/restore-db.sh",
